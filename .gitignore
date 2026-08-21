@@ -1,0 +1,27 @@
+# CS2 Demo Replay Files (Exceeds GitHub 100MB File Limit)
+*.dem
+scripts/demos/*.dem
+
+# Python Cache & Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+env/
+venv/
+ENV/
+.venv
+
+# Jupyter Notebook / Scratch
+.ipynb_checkpoints
+scratch/
+
+# IDE / Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS Generated
+.DS_Store
+Thumbs.db
