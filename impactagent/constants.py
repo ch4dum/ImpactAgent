@@ -50,3 +50,7 @@ MIN_BLIND_SECONDS = 1.1
 # Trade window in seconds. NOT published by Leetify. KAST + traded deaths + trade kills
 # (succeeded) on inferno-44a522c3 + mirage-65db631a bound it to [3.48, 4.47) s; 4.0 is inside.
 TRADE_WINDOW_SECONDS = 4.0
+
+# Trade attempt = damaged the killer, or fired while the killer was spotted and the crosshair
+# was within this angle of him. HYPOTHESIS (best of a grid search on 2 matches, spec §3).
+TRADE_ATTEMPT_AIM_DEG = 20.0

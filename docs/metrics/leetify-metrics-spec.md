@@ -92,15 +92,28 @@ Leetify **ไม่ใช้** radar spotted ของเกม (ช้าได
 
 ---
 
-## 3. Trades 🟡
+## 3. Trades 🟡 (succeeded ✅, opportunity / attempt 🟡)
 
-- **Trade Kills:** opportunities / attempts / succeeded หมายถึงตอนเพื่อนตาย เรามีโอกาส trade ไหม ได้พยายามไหม และสำเร็จไหม
-- **Traded Deaths:** ฝั่งกลับกัน คือตอนเราตาย เพื่อนมีโอกาส trade ให้ไหม และสำเร็จไหม
-- **Glossary ไม่ได้ให้ตัวเลข** ต้องหาเองว่า:
-  - trade window กี่วินาที: ใช้ KAST + traded deaths succeeded + trade kills succeeded ของ 2 แมตช์ (20 คน) ได้ **[3.48, 4.47) s** (trade ที่ห่าง 3.484s ต้องนับ, ที่ 4.469s ต้องไม่นับ; inferno อย่างเดียวได้ [2.05, 4.84)). ใช้ 4.0s. นิยามแบบง่าย "คนฆ่าเราถูกเพื่อนเราฆ่าภายใน window" ให้ succeeded ตรงครบทั้ง 2 แมตช์ ส่วน opportunities / attempts ยังไม่ได้ทำ
-  - "opportunity" คืออะไร: ยังมีชีวิต + อยู่ใกล้ในระยะ X หรือ + เห็นคนฆ่า
-  - "attempt" คืออะไร: ยิง/ทำ damage ใส่คนฆ่าภายใน window หรือแค่วิ่งเข้าหา
-- **วิธีหา:** calibrate กับค่าจาก Leetify API ของแมตช์ที่เรามีทั้ง `.dem` และหน้า Leetify (ดูข้อ 6)
+- **Trade Kills:** opportunities / attempts / succeeded ตอนเพื่อนตาย เรามีโอกาส trade ไหม ได้พยายามไหม และสำเร็จไหม (นับต่อคู่ death × เพื่อนที่ยังรอด)
+- **Traded Deaths:** ฝั่งกลับกัน ตอนเราตาย มีเพื่อน ≥ 1 คนที่มีโอกาส / พยายาม / สำเร็จไหม (นับต่อ death)
+- ข้อมูลอยู่ในตาราง `trade_windows` (1 แถวต่อ death × เพื่อนของคนตายที่ยังรอด ณ tick ที่ตาย; ไม่นับ teamkill / suicide / post-match). feature ดึงจาก tick ใน window ทุก 4 tick แล้วทิ้ง tick data
+- **Trade window:** ใช้ KAST + traded deaths succeeded + trade kills succeeded ของ 2 แมตช์ (20 คน) ได้ **[3.48, 4.47) s** (trade ที่ห่าง 3.484s ต้องนับ, ที่ 4.469s ต้องไม่นับ). ใช้ 4.0s ✅ ช่วง
+- **Succeeded** = เพื่อนฆ่าคนฆ่าภายใน window ✅ (20/20 ทั้ง 2 แมตช์ ทั้ง TK และ TD)
+- **Opportunity / Attempt (🟡 สมมติฐาน ยังไม่ตรง):** grid search window {3.5, 4, 5, 6}s × นิยามหลายแบบ (ตัวเลข = ผู้เล่นที่ตรงเป๊ะ จาก 20)
+
+  | นิยามที่ลอง | TK opp | TD opp | TK att | TD att |
+  |---|---|---|---|---|
+  | opp = เพื่อนที่ยังรอดทุกคน | 0–3 | 2–5 | | |
+  | opp = ระยะจากคนตาย / คนฆ่า < 500…2000u | ≤ 5 | ≤ 5 | | |
+  | opp = เพื่อนเห็นคนฆ่า (`approximate_spotted_by`) | 5 | 5 | | |
+  | opp = เพื่อนเห็นคนฆ่า **หรือ** คนฆ่าเห็นเพื่อน | 7 | 6 | | |
+  | **opp = attempt หรือ เห็นกันทางใดทางหนึ่ง** (ใช้อยู่) | **12** | **9** | | |
+  | att = ทำ damage ใส่คนฆ่า | | | 4 | 4 |
+  | att = ยิงอะไรก็ได้ใน window | | | 5–10 | 8 |
+  | **att = damage ใส่คนฆ่า หรือ ยิงตอนเห็นคนฆ่าและเป้าห่าง < 20°** (ใช้อยู่, 4s) | | | **12** | **13** |
+
+  ตอนนี้ได้ inferno 22/40, mirage 25/40 (metric × ผู้เล่น) ห่างเฉลี่ย 4–48%. **สาเหตุที่น่าจะเป็น:** `approximate_spotted_by` ของเกมเป็นค่าประมาณ Leetify น่าจะใช้ visibility ของตัวเอง → รอ visibility module (roadmap Phase 1) แล้ว calibrate ใหม่. validate รายงานกลุ่มนี้เป็น `calibrating` ไม่ gate
+- **Opening traded %** = opening death ที่ถูก trade (succeeded) ÷ opening death ✅ (20/20)
 
 ---
 
@@ -155,7 +168,7 @@ kills, deaths, assists, HS kills, K/D, damage, ADR (`dpr`), KAST, rounds survive
 4. Trades (calibrate) → KAST
 5. WP model → Impact Rating
 
-## 8. สถานะกฎ (validate 2 แมตช์: inferno-44a522c3 245/245, mirage-65db631a 290/290)
+## 8. สถานะกฎ (validate 2 แมตช์: core inferno 275/275, mirage 320/320; opening 13/13, 24/24; clutch 14/15, 28/28)
 
 ✅ = มีเคสพิสูจน์ใน 2 แมตช์ · 🟢 = มีเคสพิสูจน์ 1 แมตช์ อีกแมตช์ไม่ขัด · 🟡 = สมมติฐาน (ยังไม่มีเคสที่แยกทางเลือกได้)
 
@@ -180,3 +193,11 @@ kills, deaths, assists, HS kills, K/D, damage, ADR (`dpr`), KAST, rounds survive
 | Unused: ตัวหารรวม death หลังจบแมตช์ | inferno: Wagga, yyh; mirage: ch4dum | ✅ |
 | Unused: ราคา (incendiary 500, decoy 50) | incendiary 22 การตาย, decoy 3 การตาย | ✅ |
 | Grace 1s ของ "เพิ่งปา" | เคสเดียว ห่าง 0.48s | 🟡 ค่าเป๊ะ |
+| Trade succeeded = เพื่อนฆ่าคนฆ่าใน window (TK ต่อเพื่อน, TD ต่อ death) | 40/40 player × metric | ✅ |
+| Trade opportunity / attempt (§3) | ดีสุด ~60% ตรงเป๊ะ | 🟡 รอ visibility |
+| Opening traded % = opening death ที่ถูก trade ÷ opening death | 20/20 | ✅ |
+| Opening duel = kill แรกของรอบ (ไม่นับ TK / suicide) | 37/37 รอบ | ✅ |
+| Clutch เริ่มเมื่อ death ทำให้เหลือคนเดียวในฝั่ง และศัตรูเหลือ ≥ 1; vs = ศัตรูที่เหลือ; นับทุก death (TK / suicide / world) ยกเว้น post-match | 42/43 | ✅ |
+| Clutch kills = kill ศัตรูหลังเริ่ม clutch จนจบรอบ | 42/43 | ✅ |
+| Clutch outcome: won = ฝั่งชนะ, lost = ตายในรอบ, saved = แพ้แต่รอด | 42/43 | ✅ |
+| เคสที่อธิบายไม่ได้: inferno r13 Suzy (Leetify vs5 k1 saved, เรา vs5 k0 lost) ตายด้วย `world` ตรง tick จบรอบ และ kill เดียวของเธอเป็น teamkill **ก่อน**เริ่ม clutch. "suicide ไม่นับเป็นตาย" แก้ outcome ได้แต่ kills ยังไม่ตรง; "นับ kill ทั้งรอบรวม TK" ทำให้ 17 เคสอื่นพัง | 1 เคส | 🟡 ไม่ฝืนแก้ (clutch ไม่ gate) |

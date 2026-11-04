@@ -17,7 +17,8 @@ import numpy as np
 import pandas as pd
 from demoparser2 import DemoParser
 
-from impactagent.constants import DEFAULT_TICKRATE, GRENADE_WEAPONS, SIDE_BY_TEAM_NUM
+from impactagent.constants import DEFAULT_TICKRATE, GRENADE_WEAPONS, SIDE_BY_TEAM_NUM, TRADE_WINDOW_SECONDS
+from impactagent.parse.trades import build_trade_windows
 
 POS_PROPS = ["team_num", "last_place_name", "X", "Y", "Z"]
 
@@ -38,6 +39,7 @@ class ParsedDemo:
     blinds: pd.DataFrame
     bomb: pd.DataFrame
     death_inventory: pd.DataFrame
+    trade_windows: pd.DataFrame = field(default_factory=pd.DataFrame)
     warnings: list[str] = field(default_factory=list)
 
     def tables(self) -> dict[str, pd.DataFrame]:
@@ -52,6 +54,7 @@ class ParsedDemo:
             "blinds": self.blinds,
             "bomb": self.bomb,
             "death_inventory": self.death_inventory,
+            "trade_windows": self.trade_windows,
         }
 
 
@@ -454,6 +457,9 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
 
     rounds = rounds.drop(columns=["next_start_tick"])
     grenades.attrs["detonations"] = detonations
+    trade_windows = build_trade_windows(
+        parser, kills, damages, shots, player_rounds_side, tickrate, TRADE_WINDOW_SECONDS
+    )
     return ParsedDemo(
         path=path,
         sha256=sha256,
@@ -469,5 +475,6 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
         blinds=blinds,
         bomb=bomb,
         death_inventory=death_inventory,
+        trade_windows=trade_windows,
         warnings=warnings,
     )

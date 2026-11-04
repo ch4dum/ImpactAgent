@@ -95,9 +95,9 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash
 | outcome | `kill` · `damaged` · `no_damage` · `died` |
 | attacker_place, victim_place | |
 
-**`trade_windows`**: match_id, round_no, death_tick, dead_id, killer_id, teammate_id, had_opportunity, attempted, succeeded (1 แถวต่อ teammate ที่ยังรอด ใช้ทั้ง Trade Kill และ Traded Death)
+**`trade_windows`**: match_id, round_no, death_tick, dead_id, killer_id, teammate_id, had_opportunity, attempted, succeeded (1 แถวต่อ teammate ที่ยังรอด ใช้ทั้ง Trade Kill และ Traded Death). Parser เก็บ feature ที่ sample จาก tick ใน window (ไม่เก็บ tick data): dist_to_victim, dist_to_killer, min_dist_to_killer, teammate_spotted_killer, killer_spotted_teammate, min_aim_angle_spotted, damaged_killer, fired, succeeded. `had_opportunity` / `attempted` คิดใน metrics (นิยามยังเป็นสมมติฐาน, spec §3)
 
-**`clutches`**: match_id, round_no, steam_id, vs_n, start_tick, kills, outcome (`won`/`lost`/`saved`)
+**`clutches`**: match_id, round_no, steam_id, side, vs_n, start_tick, kills, outcome (`won`/`lost`/`saved`) (derive จาก kills + player_rounds_side + rounds ไม่ต้อง parse ใหม่)
 
 **`rating_events`**: match_id, round_no, tick, steam_id, category (`mid_round_kd` · `opening_duel` · `retake` · `clutch` · `damage_assist` · `traded` · `flash_assist` · `afterplant` · `enemy_saving`), delta (ใช้ทำ Rating Breakdown)
 
@@ -230,6 +230,6 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash
 
 ## 6. ยังไม่ตัดสินใจ
 - Visibility module: spotted mask ก่อน → raycast ทีหลัง (ดู `metrics/leetify-metrics-spec.md` ข้อ 0)
-- Trade window กี่วินาที (calibrate ด้วย `data/validation/`)
+- Trade window: ช่วง [3.48, 4.47) s ใช้ 4.0 (spec §3); นิยาม trade opportunity / attempt รอ visibility
 - เกณฑ์ buy type (มูลค่าอุปกรณ์เท่าไหร่ = eco/force/full)
 - Postgres แบบ self-host หรือ Supabase

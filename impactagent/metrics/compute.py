@@ -18,6 +18,7 @@ from impactagent.constants import (
     HE_DAMAGE_WEAPONS,
     MIN_BLIND_SECONDS,
     THROWN_GRENADE_GRACE_SECONDS,
+    TRADE_ATTEMPT_AIM_DEG,
     TRADE_WINDOW_SECONDS,
 )
 from impactagent.parse.demo import ParsedDemo
@@ -255,6 +256,101 @@ def utility_metrics(p: ParsedDemo, all_kills: pd.DataFrame | None = None) -> pd.
     return out
 
 
+# --------------------------------------------------------------------------- trades
+
+def trade_flags(tw: pd.DataFrame) -> pd.DataFrame:
+    """Add had_opportunity / attempted to trade_windows (spec §3; opportunity + attempt are
+    HYPOTHESES, succeeded is validated)."""
+    tw = tw.copy()
+    tw["attempted"] = tw["damaged_killer"] | (tw["fired"] & (tw["min_aim_angle_spotted"] < TRADE_ATTEMPT_AIM_DEG))
+    tw["had_opportunity"] = tw["attempted"] | tw["teammate_spotted_killer"] | tw["killer_spotted_teammate"]
+    return tw
+
+
+def trade_metrics(p: ParsedDemo) -> pd.DataFrame:
+    out = pd.DataFrame(index=pd.Index(p.players["steam_id"], name="steam_id"))
+    tw = p.trade_windows
+    if tw is None or tw.empty:
+        for c in ("trade_kill_opportunities", "trade_kill_attempts", "trade_kills_succeed",
+                  "traded_death_opportunities", "traded_death_attempts", "traded_deaths_succeed"):
+            out[c] = 0
+        out["opening_traded_pct"] = np.nan
+        return out
+    tw = trade_flags(tw)
+    per_death = tw.groupby(["dead_id", "death_tick"])[["had_opportunity", "attempted", "succeeded"]].any().reset_index()
+    for flag, tk_col, td_col in [("had_opportunity", "trade_kill_opportunities", "traded_death_opportunities"),
+                                 ("attempted", "trade_kill_attempts", "traded_death_attempts"),
+                                 ("succeeded", "trade_kills_succeed", "traded_deaths_succeed")]:
+        out[tk_col] = tw[tw[flag]].groupby("teammate_id").size().reindex(out.index).fillna(0).astype(int)
+        out[td_col] = per_death[per_death[flag]].groupby("dead_id").size().reindex(out.index).fillna(0).astype(int)
+
+    # Opening traded % = opening deaths that were traded / opening deaths.
+    first = (
+        p.kills[~p.kills["is_team_kill"] & ~p.kills["is_suicide"]].sort_values("tick").groupby("round_no").head(1)
+    )
+    traded = set(zip(per_death.loc[per_death["succeeded"], "dead_id"], per_death.loc[per_death["succeeded"], "death_tick"]))
+    first = first.assign(traded=[(v, t) in traded for v, t in zip(first["victim_id"], first["tick"])])
+    g = first.groupby("victim_id")["traded"]
+    out["opening_deaths"] = g.size().reindex(out.index).fillna(0).astype(int)
+    out["opening_deaths_traded"] = g.sum().reindex(out.index).fillna(0).astype(int)
+    out["opening_traded_pct"] = out["opening_deaths_traded"] / out["opening_deaths"].replace(0, np.nan)
+    return out
+
+
+# --------------------------------------------------------------------------- clutches
+
+def build_clutches(p: ParsedDemo) -> pd.DataFrame:
+    """One row per clutch (data-model `clutches`).
+
+    A clutch starts when a death leaves a player as the last one alive on his side with
+    vs_n >= 1 enemies alive. kills = his kills from then until the end of the round.
+    outcome: won (his side won) / saved (lost but he survived) / lost.
+    Every death counts for "alive" (team kills, suicides, world), post-match deaths do not.
+    """
+    cols = ["round_no", "steam_id", "side", "vs_n", "start_tick", "kills", "outcome"]
+    k = p.kills
+    if "post_match" in k:
+        k = k[~k["post_match"]]
+    k = k.sort_values("tick", kind="mergesort")
+    rounds = p.rounds.set_index("round_no")
+    rows = []
+    for rn, roster in p.player_rounds_side.groupby("round_no"):
+        alive = {s: set(g["steam_id"]) for s, g in roster.groupby("side")}
+        if set(alive) != {"CT", "T"}:
+            continue
+        started: set[str] = set()
+        rk = k[k["round_no"] == rn]
+        for d in rk.itertuples(index=False):
+            for s in alive:
+                alive[s].discard(d.victim_id)
+            for s, other in (("CT", "T"), ("T", "CT")):
+                if len(alive[s]) == 1 and alive[other]:
+                    (sid,) = alive[s]
+                    if sid not in started:
+                        started.add(sid)
+                        rows.append({"round_no": rn, "steam_id": sid, "side": s, "vs_n": len(alive[other]),
+                                     "start_tick": int(d.tick)})
+        for r in rows:
+            if r["round_no"] != rn:
+                continue
+            after = rk[rk["tick"] > r["start_tick"]]
+            r["kills"] = int(((after["attacker_id"] == r["steam_id"]) & ~after["is_team_kill"] & ~after["is_suicide"]).sum())
+            died = bool((rk["victim_id"] == r["steam_id"]).any())
+            won = rounds.at[rn, "winner_side"] == r["side"]
+            r["outcome"] = "won" if won else ("lost" if died else "saved")
+    return pd.DataFrame(rows, columns=cols)
+
+
+def clutch_metrics(p: ParsedDemo, clutches: pd.DataFrame) -> pd.DataFrame:
+    out = pd.DataFrame(index=pd.Index(p.players["steam_id"], name="steam_id"))
+    g = clutches.groupby("steam_id")
+    out["clutches"] = g.size().reindex(out.index).fillna(0).astype(int)
+    for o in ("won", "lost", "saved"):
+        out[f"clutches_{o}"] = clutches[clutches["outcome"] == o].groupby("steam_id").size().reindex(out.index).fillna(0).astype(int)
+    out["clutch_kills"] = g["kills"].sum().reindex(out.index).fillna(0).astype(int)
+    return out
+
+
 # --------------------------------------------------------------------------- all
 
 def compute_match_metrics(p: ParsedDemo) -> pd.DataFrame:
@@ -264,5 +360,7 @@ def compute_match_metrics(p: ParsedDemo) -> pd.DataFrame:
     pr = build_player_rounds(p)
     gen = general_metrics(p, pr)
     util = utility_metrics(p, all_kills)
+    trades = trade_metrics(p)
+    clutch = clutch_metrics(p, build_clutches(p))
     names = p.players.set_index("steam_id")[["name", "team"]]
-    return names.join(gen).join(util)
+    return names.join(gen).join(util).join(trades).join(clutch)

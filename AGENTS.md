@@ -36,7 +36,7 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 | `data/parsed/` | Parser outputs (Parquet). Gitignored. |
 
 ## Current status (2026-11-05)
-Phase 0 (research) and data model v0.1 are done. CLI (`inspect`, `parse`, `validate`, `validate-all`) is done. **General + Utility match Leetify on both pairs: inferno 245/245, mirage 290/290** (player × metric). The mirage holdout scored 274/290 before any change; the 4 rules it broke are fixed. Which rules are proven by 2 matches, 1 match, or still hypotheses: `docs/metrics/leetify-metrics-spec.md` §8.
+Phase 0 (research) and data model v0.1 are done. CLI (`inspect`, `parse`, `validate`, `validate-all`) is done. **Core metrics (General + Utility + trade succeeded + opening traded %) match Leetify on both pairs: inferno 275/275, mirage 320/320** (player × metric); opening duels 37/37 rounds; clutches 42/43. Trade opportunity / attempt are hypotheses (~60% exact), reported as `calibrating` (not gating). Which rules are proven by 2 matches, 1 match, or still hypotheses: `docs/metrics/leetify-metrics-spec.md` §8.
 
 Validate (run after every metric/parser change; all pairs must stay green):
 ```
@@ -44,9 +44,8 @@ python -m impactagent validate-all
 ```
 
 ### Next steps
-1. Trades: opportunities / attempts (succeeded already matches with a naive 4.0s rule; window bounded to [3.48, 4.47) s), opening traded %.
-2. Hypotheses in spec §8 (🟡) need a match that separates them, e.g. a kill during a ≤ 1.1s blind, capped molotov / team-HE hits.
-3. Then: metric registry YAML (`impactagent/metrics/registry.yaml`, fields in data-model §4), trades (`trade_windows`), opening duels, clutches. Aim metrics need the visibility module (spec §0) and come after.
+1. Next Phase 1 items in `docs/roadmap.md`: metric registry YAML (`impactagent/metrics/registry.yaml`, fields in data-model §4), then visibility → Aim, then re-calibrate trade opportunity / attempt with real visibility.
+2. Hypotheses in spec §8 (🟡) need a match that separates them, e.g. a kill during a ≤ 1.1s blind, capped molotov / team-HE hits, the inferno r13 Suzy clutch.
 
 ## Rules
 - **Roadmap:** update `docs/roadmap.md` (tick checklist items, add new decisions) every time a piece of work is finished or a new decision is made.
