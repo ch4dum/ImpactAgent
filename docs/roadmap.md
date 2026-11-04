@@ -59,6 +59,7 @@
 |---|---|
 | Database | **Supabase** (Postgres + Auth) |
 | Domain | **tammapol.com** (Cloudflare) ใช้ subdomain ไปก่อน |
+| Branches | `main` = rebuild (เดิมชื่อ `v2`, default บน GitHub) · `v1-draft` = prototype เดิม (เดิมชื่อ `main`) ไว้อ้างอิงเท่านั้น (2026-11-05) |
 | ชื่อ product | ยังไม่ตัดสินใจ (ห้ามมี CS2 / Counter-Strike) |
 | LLM | Gemini API free tier + export ให้ user ใช้ AI ของตัวเอง |
 | Buy type thresholds | ยังไม่ตัดสินใจ (Leetify ไม่เปิดเผย) |

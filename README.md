@@ -1,8 +1,8 @@
-# ImpactAgent v2
+# ImpactAgent
 
 CS2 demo analytics platform (Leetify-style stats) with an LLM coach you can chat with about your matches.
 
-> Clean rebuild. The original prototype lives on the `main` branch as a reference draft only — nothing is carried over.
+> Clean rebuild. The original prototype lives on the `v1-draft` branch as a reference draft only — nothing is carried over.
 
 ## Status
 

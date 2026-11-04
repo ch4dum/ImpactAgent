@@ -6,7 +6,7 @@
 - [Leetify Stats Glossary](https://leetify.com/blog/leetify-stats-glossary) — นิยามทางการ
 - [Leetify Rating Explained](https://leetify.com/blog/leetify-rating-explained) — วิธีคิด rating
 - [Enemy Actually Spotted](https://leetify.com/blog/enemy-actually-spotted/) — วิธีเช็คว่า "เห็นศัตรู"
-- Leetify Public API v2 (`/v2/matches/{id}`) — ชื่อ field จริง (ดู `docs/leetify_metrics_reference.md` บน branch `main`)
+- Leetify Public API v2 (`/v2/matches/{id}`) — ชื่อ field จริง (ดู `docs/leetify_metrics_reference.md` บน branch `v1-draft`)
 
 **สถานะ:** ✅ นิยามชัด ทำตามได้เลย · 🟡 รู้หลักการ แต่ต้อง calibrate ค่าคงที่ · 🔴 ต้องสร้าง model เอง
 
@@ -27,7 +27,7 @@ Leetify **ไม่ใช้** radar spotted ของเกม (ช้าได
 
 → **แผน:** เริ่มด้วย A เพื่อให้ pipeline เดินก่อน แล้วสลับเป็น B ทีหลัง โดยออกแบบให้ `visibility` เป็น module ที่ถอดเปลี่ยนได้
 
-> ⚠️ ของเดิมบน `main` คิด preaim เป็นมุมระหว่างเป้ากับ **หัวศัตรู** ซึ่งไม่ใช่นิยามของ Leetify (ดูข้อ 1.4)
+> ⚠️ ของเดิมบน `v1-draft` คิด preaim เป็นมุมระหว่างเป้ากับ **หัวศัตรู** ซึ่งไม่ใช่นิยามของ Leetify (ดูข้อ 1.4)
 
 ---
 
