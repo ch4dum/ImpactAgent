@@ -168,7 +168,7 @@ kills, deaths, assists, HS kills, K/D, damage, ADR (`dpr`), KAST, rounds survive
 4. Trades (calibrate) → KAST
 5. WP model → Impact Rating
 
-## 8. สถานะกฎ (validate 2 แมตช์: core inferno 275/275, mirage 320/320; opening 13/13, 24/24; clutch 14/15, 28/28)
+## 8. สถานะกฎ (validate 2 แมตช์: core inferno 275/275, mirage 320/320; opening 13/13, 24/24; clutch 15/15, 28/28)
 
 ✅ = มีเคสพิสูจน์ใน 2 แมตช์ · 🟢 = มีเคสพิสูจน์ 1 แมตช์ อีกแมตช์ไม่ขัด · 🟡 = สมมติฐาน (ยังไม่มีเคสที่แยกทางเลือกได้)
 
@@ -197,7 +197,7 @@ kills, deaths, assists, HS kills, K/D, damage, ADR (`dpr`), KAST, rounds survive
 | Trade opportunity / attempt (§3) | ดีสุด ~60% ตรงเป๊ะ | 🟡 รอ visibility |
 | Opening traded % = opening death ที่ถูก trade ÷ opening death | 20/20 | ✅ |
 | Opening duel = kill แรกของรอบ (ไม่นับ TK / suicide) | 37/37 รอบ | ✅ |
-| Clutch เริ่มเมื่อ death ทำให้เหลือคนเดียวในฝั่ง และศัตรูเหลือ ≥ 1; vs = ศัตรูที่เหลือ; นับทุก death (TK / suicide / world) ยกเว้น post-match | 42/43 | ✅ |
-| Clutch kills = kill ศัตรูหลังเริ่ม clutch จนจบรอบ | 42/43 | ✅ |
-| Clutch outcome: won = ฝั่งชนะ, lost = ตายในรอบ, saved = แพ้แต่รอด | 42/43 | ✅ |
-| เคสที่อธิบายไม่ได้: inferno r13 Suzy (Leetify vs5 k1 saved, เรา vs5 k0 lost) ตายด้วย `world` ตรง tick จบรอบ และ kill เดียวของเธอเป็น teamkill **ก่อน**เริ่ม clutch. "suicide ไม่นับเป็นตาย" แก้ outcome ได้แต่ kills ยังไม่ตรง; "นับ kill ทั้งรอบรวม TK" ทำให้ 17 เคสอื่นพัง | 1 เคส | 🟡 ไม่ฝืนแก้ (clutch ไม่ gate) |
+| Clutch เริ่มเมื่อ death ทำให้เหลือคนเดียวในฝั่ง และศัตรูเหลือ ≥ 1; vs = ศัตรูที่เหลือ; นับทุก death (TK / suicide / world / ออกเกม) ยกเว้น post-match | 43/43 | ✅ |
+| Clutch kills = kill ศัตรูหลังเริ่ม clutch จนจบรอบ **+ death แบบ world/suicide ของศัตรู (เช่นออกเกม) ที่เราเป็น assister** นับรวม post-match | 43/43; ส่วน "+ assister" มีหลักฐาน 1 เคส (inferno r13: Wagga ออกเกมหลังจบแมตช์ assister = Suzy) | ✅ / 🟢 |
+| Clutch outcome: won = ฝั่งชนะ, lost = ตายในรอบ, saved = แพ้แต่รอด. **ตายเพราะออกเกม (`by_disconnect`) ไม่นับว่าตาย** | 43/43; ส่วน "ออกเกม" มีหลักฐาน 1 เคส (inferno r13 Suzy) | ✅ / 🟢 |
+| **Death จากการออกเกม** (`kills.by_disconnect`): suicide/world ที่ tick เดียวกับ `player_disconnect` ของคนตาย (±1 tick). เจอ 5 ครั้งใน 2 แมตช์ (Suzy ระหว่างแมตช์, ที่เหลือหลังจบแมตช์). **General ยังนับเป็น death** (Leetify: Suzy deaths 13) และ KAST ไม่เปลี่ยน; ใช้แค่ clutch outcome. J ใน mirage หลุดกลางเกม 2 ครั้งแต่ไม่มี death เกิดขึ้น | 5 เคส | ✅ ตรวจจับ / 🟢 ผลต่อ clutch |

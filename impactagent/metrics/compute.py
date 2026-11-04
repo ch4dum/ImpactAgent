@@ -303,15 +303,18 @@ def build_clutches(p: ParsedDemo) -> pd.DataFrame:
     """One row per clutch (data-model `clutches`).
 
     A clutch starts when a death leaves a player as the last one alive on his side with
-    vs_n >= 1 enemies alive. kills = his kills from then until the end of the round.
-    outcome: won (his side won) / saved (lost but he survived) / lost.
-    Every death counts for "alive" (team kills, suicides, world), post-match deaths do not.
+    vs_n >= 1 enemies alive. Every death counts for "alive" (team kills, suicides, world),
+    post-match deaths do not.
+    kills = his kills of enemies after the start, plus enemy world/suicide deaths (e.g. leaving
+      the server) where he is the assister, post-match ones included (inferno r13 Suzy).
+    outcome: won (his side won) / lost (died) / saved (lost but alive). Being killed by
+      leaving the server (`by_disconnect`) is not dying here (inferno r13 Suzy).
+    Pass p with ALL kills (incl. post_match rows).
     """
     cols = ["round_no", "steam_id", "side", "vs_n", "start_tick", "kills", "outcome"]
-    k = p.kills
-    if "post_match" in k:
-        k = k[~k["post_match"]]
-    k = k.sort_values("tick", kind="mergesort")
+    all_k = p.kills.sort_values("tick", kind="mergesort")
+    k = all_k[~all_k["post_match"]] if "post_match" in all_k else all_k
+    by_disc = k["by_disconnect"] if "by_disconnect" in k else pd.Series(False, index=k.index)
     rounds = p.rounds.set_index("round_no")
     rows = []
     for rn, roster in p.player_rounds_side.groupby("round_no"):
@@ -333,9 +336,11 @@ def build_clutches(p: ParsedDemo) -> pd.DataFrame:
         for r in rows:
             if r["round_no"] != rn:
                 continue
-            after = rk[rk["tick"] > r["start_tick"]]
-            r["kills"] = int(((after["attacker_id"] == r["steam_id"]) & ~after["is_team_kill"] & ~after["is_suicide"]).sum())
-            died = bool((rk["victim_id"] == r["steam_id"]).any())
+            after = all_k[(all_k["round_no"] == rn) & (all_k["tick"] > r["start_tick"])]
+            own = (after["attacker_id"] == r["steam_id"]) & ~after["is_team_kill"] & ~after["is_suicide"]
+            credited = after["is_suicide"] & (after["assister_id"] == r["steam_id"]) & (after["victim_side"] != r["side"])
+            r["kills"] = int((own | credited).sum())
+            died = bool(((rk["victim_id"] == r["steam_id"]) & ~by_disc[rk.index]).any())
             won = rounds.at[rn, "winner_side"] == r["side"]
             r["outcome"] = "won" if won else ("lost" if died else "saved")
     return pd.DataFrame(rows, columns=cols)
@@ -361,6 +366,6 @@ def compute_match_metrics(p: ParsedDemo) -> pd.DataFrame:
     gen = general_metrics(p, pr)
     util = utility_metrics(p, all_kills)
     trades = trade_metrics(p)
-    clutch = clutch_metrics(p, build_clutches(p))
+    clutch = clutch_metrics(p, build_clutches(replace(p, kills=all_kills)))
     names = p.players.set_index("steam_id")[["name", "team"]]
     return names.join(gen).join(util).join(trades).join(clutch)

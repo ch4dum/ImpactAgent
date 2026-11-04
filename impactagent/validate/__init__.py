@@ -120,8 +120,8 @@ def check_same_match(p, ours: pd.DataFrame, truth: dict) -> list[str]:
 
 
 # Reported but not gating: definitions are still hypotheses (spec §3 / §8).
-# Per-round event kinds that gate validate-all (clutches: 42/43, one unexplained case).
-GATING_EVENTS = {"opening"}
+# Per-round event kinds that gate validate-all.
+GATING_EVENTS = {"opening", "clutch"}
 CALIBRATING_METRICS = {
     "trade_kill_opportunities", "trade_kill_attempts",
     "traded_death_opportunities", "traded_death_attempts",

@@ -11,7 +11,7 @@
 - **Data model v0.1** (`docs/design/data-model.md`)
 - **Parser + CLI:** `.dem` / `.dem.bz2` / `.dem.gz` (`.dem.zst` ถ้ามี zstandard), `inspect` · `parse` · `validate` · `validate-all`, guard กันจับคู่ demo ผิดแมตช์
 - **General + Utility ตรงกับ Leetify:** Inferno 245/245, Mirage 290/290 (holdout ได้ 274/290 ก่อนแก้โค้ด) สถานะของแต่ละกฎอยู่ใน spec §8
-- **Trades (succeeded) + opening traded % + opening duels + clutches:** core รวม Inferno 275/275, Mirage 320/320; opening 37/37 รอบ; clutch 42/43 (1 เคสอธิบายไม่ได้, spec §8)
+- **Trades (succeeded) + opening traded % + opening duels + clutches:** core รวม Inferno 275/275, Mirage 320/320; opening 37/37 รอบ; clutch 43/43 (รวมเคสออกเกม, spec §8)
 
 ## ⏳ Phase 1: Metrics engine (ครบหนึ่งแมตช์)
 - [x] Trades: `trade_windows`, succeeded, opening traded %, clutches
@@ -63,4 +63,4 @@
 | Buy type thresholds | ยังไม่ตัดสินใจ (Leetify ไม่เปิดเผย) |
 | Visibility | เริ่มที่ `spotted` แล้วค่อยดูว่าต้อง raycast ไหม (`approximate_spotted_by` ให้ trade opportunity ตรงแค่ ~60%) |
 | Trade window | 4.0s (ช่วงที่ข้อมูลยอมรับ [3.48, 4.47) s) |
-| validate gating | gate เฉพาะ core metric + opening duels; trade opp/att และ clutch เป็น `calibrating` (รายงานแต่ไม่ fail) |
+| validate gating | gate core metric + opening duels + clutches; trade opp/att เป็น `calibrating` (รายงานแต่ไม่ fail) |

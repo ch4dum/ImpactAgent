@@ -328,6 +328,14 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
     kills["is_team_kill"] = kills["attacker_side"].notna() & (kills["attacker_side"] == kills["victim_side"])
     kills["is_suicide"] = kills["attacker_id"].isna() | (kills["attacker_id"] == kills["victim_id"])
     kills["post_match"] = k["post_match"].to_numpy(dtype=bool)
+    # A player who leaves the server is killed by "world" in the same tick as player_disconnect.
+    disc = _event(parser, "player_disconnect")
+    left = set()
+    if not disc.empty and "user_steamid" in disc:
+        left = {(s, int(t) + dt) for s, t in zip(_sid(disc["user_steamid"]), disc["tick"]) if s for dt in (-1, 0, 1)}
+    kills["by_disconnect"] = [
+        bool(sui) and (v, int(t)) in left for v, t, sui in zip(kills["victim_id"], kills["tick"], kills["is_suicide"])
+    ]
 
     # ---- damages
     d = _event(parser, "player_hurt", ["team_num"])
