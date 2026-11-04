@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "impactagent"
+version = "0.1.0"
+description = "CS2 demo analytics with an LLM coach"
+requires-python = ">=3.10"
+dependencies = [
+    "demoparser2>=0.30",
+    "pandas>=2.2",
+    "pyarrow>=14",
+    "pyyaml>=6",
+]
+
+[tool.setuptools.packages.find]
+include = ["impactagent*"]
+
+[tool.setuptools.package-data]
+impactagent = ["metrics/*.yaml"]
