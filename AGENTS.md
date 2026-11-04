@@ -23,6 +23,7 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 | `docs/metrics/leetify-metrics-spec.md` | How each Leetify metric is defined/computed, open questions, validation plan |
 | `docs/metrics/parameters.md` | Every Leetify parameter by category: meaning, API field, unit, direction, example, status |
 | `docs/research/leetify-sitemap.md` | Leetify site structure page by page, and takeaways for ImpactAgent |
+| `docs/roadmap.md` | Phases, checklist, decisions. Keep it current. |
 | `docs/design/data-model.md` | **Data model v0.1**: tables, page→table mapping, metric registry fields, pipeline. Code must follow this. |
 | `impactagent/constants.py` | Game constants (team nums, grenade prices, blind threshold, trade window) |
 | `impactagent/parse/demo.py` | `parse_demo(path) -> ParsedDemo` (event tables via demoparser2) |
@@ -48,6 +49,7 @@ python -m impactagent validate-all
 3. Then: metric registry YAML (`impactagent/metrics/registry.yaml`, fields in data-model §4), trades (`trade_windows`), opening duels, clutches. Aim metrics need the visibility module (spec §0) and come after.
 
 ## Rules
+- **Roadmap:** update `docs/roadmap.md` (tick checklist items, add new decisions) every time a piece of work is finished or a new decision is made.
 - **Commits:** the owner commits himself (GitHub Desktop). When work is ready, propose a message: **Summary ≤ 5 words**, details as bullet points in the **Description**. Don't commit or push unless asked.
 - **Leetify data:** validation values copied from Leetify stay in gitignored `data/validation/`. Don't store Leetify API data in the product, don't scrape Leetify, and stop if a site shows a bot check. Our metric names must be our own, not Leetify's (their API guidelines forbid reusing their names/recalculating their scores under their name).
 - **Trademark:** no "CS2"/"Counter-Strike" in the product or domain name.
