@@ -147,6 +147,17 @@
 ต่อคู่: Kills · Damage · Weapon breakdown (Snipers/Rifles/Pistols) · Spotted Accuracy (hit/fired) · Time to Damage · Crosshair Placement · Counter-Strafing · flash ที่ทำให้อีกฝ่ายตาบอด (จำนวน + วินาทีรวม) · มีโหมด Simple View กับ Matrix View
 → เป็น metric เดียวกับ Aim และ Utility แต่กรองเฉพาะคู่ attacker↔victim **ถ้าเก็บข้อมูลระดับ engagement ไว้ ก็ได้หน้านี้ฟรี**
 
+
+## 8.1 Map Zones (ต่อ zone)
+| Parameter | หน่วย | ความหมาย | สถานะ |
+|---|---|---|---|
+| Zone share | % | kill + death ใน zone ÷ kill + death ทั้งหมด (ตาม filter) | ✅ |
+| Zone K/D | อัตราส่วน | kills ÷ deaths ที่เกิดใน zone | ✅ |
+| Zone vs benchmark | สี | เทียบ K/D ของ zone กับ benchmark | 🟡 ไม่รู้ว่า benchmark มาจากไหน (น่าจะเป็นค่าเฉลี่ยของ zone นั้นใน rank bracket) |
+- **Zone ของเหตุการณ์:** น่าจะใช้ตำแหน่งของ *เรา* ตอนเกิดเหตุ (ทั้งตอน kill และตอนตาย) ต้องเช็คอีกที
+- **Filter:** side, phase (pre/post-plant), me/team, economy
+- **ข้อมูลจาก demo:** `last_place_name` + `X/Y/Z` ณ tick ของ `player_death` ทั้งของ attacker และ victim
+
 ---
 
 ## 9. ❓ ต้องหาคำตอบต่อ
@@ -156,3 +167,5 @@
 4. Flash Assists แสดงเป็น % แต่หารด้วยอะไร
 5. Time to Kill / First Bullet Accuracy ทำไมขึ้น n/a
 6. เกณฑ์ label Great/Average/Subpar/Poor ของแต่ละ metric
+7. Benchmark K/D ต่อ zone ของ Map Zones มาจากไหน และ zone ของ event คิดจากตำแหน่งใคร
+8. ขีดอ้างอิงบน Consistency gauge (+2.24) คือค่าอะไร

@@ -53,9 +53,9 @@ Premier rating · AIM (0–100) · UTILITY (0–100) · POSITIONING (0–100) ·
 | Overview | `overview` | — | ✅ |
 | Match Details | `details-*` | General · Timeline · Aim · Utility · Activity · Trades · Opening Duels · Clutches | ✅ (ดู `docs/metrics/parameters.md`) |
 | Head to Head | `head-to-head` | Simple View · Matrix View | ✅ |
-| Rating Breakdown | `rating-breakdown` | — | ✅ ข้อความ · ⏳ ภาพกราฟ |
-| Map Zones | `map-zones` | | ⏳ รอภาพ |
-| 2D Replay | `2d-replay` | | 🔒 PRO |
+| Rating Breakdown | `rating-breakdown` | — | ✅ |
+| Map Zones | `map-zones` | filter หลายชั้น (ดูด้านล่าง) | ✅ |
+| 2D Replay | `2d-replay` | — | ✅ (ทดลองฟรี 30 วัน/แมตช์, ต่อจากนั้น PRO) |
 
 ### Your Match (personal match report) 🔒
 หน้า "สรุปแมตช์นี้สำหรับคุณ" เป็น tab แรกเมื่อ login และเป็นคนในแมตช์นั้น
@@ -81,6 +81,28 @@ Premier rating · AIM (0–100) · UTILITY (0–100) · POSITIONING (0–100) ·
 - **UTILITY:** Damage to Enemies/Teammates per HE · Enemies/Friends Flashed per Flashbang · Flash Blind Duration per Flashed Enemy · Flashbangs Leading to Kills · Total Enemies Flashed · Total Enemies Flashed Duration · Total HE Damage · Total Molotov Damage · Unused Utility on Death · **Utility Quality Rating** · **Utility Quantity Rating**
 
 > ตัวหนา = metric ที่ยังไม่อยู่ใน `docs/metrics/leetify-metrics-spec.md` ต้องเพิ่ม
+
+### Rating Breakdown (visual)
+- **ตัวเลือกผู้เล่น** (dropdown: ชื่อ · K/A/D · rating) ดูของใครในแมตช์ก็ได้
+- **Consistency:** gauge ครึ่งวงกลม 3 อัน (Leetify / T / CT Rating) มีขีดบอกค่าอ้างอิงด้านบน (+2.24 / +1.67 / +2.77 น่าจะเป็นค่าเฉลี่ยของผู้เล่นเอง) และ label ใต้ gauge: OVERPERFORMING / ON PAR
+- **Rating Gained & Lost:** กราฟแท่งแนวตั้ง 9 หมวด เรียงจากมากไปน้อย ค่าบวกอยู่เหนือแกน ค่าลบอยู่ใต้แกน
+- **Leetify Rating by Round:** กราฟแท่งรายรอบ สีของแท่งตาม label (GREAT = teal, GOOD = เขียวขี้ม้า, AVERAGE = เทา, SUBPAR = น้ำตาล) สีของเลขรอบใต้แกนบอกผลรอบ (เขียว = ชนะ, แดง = แพ้) และใต้กราฟมีรายการต่อรอบพร้อมหมวดและลิงก์ "Watch in 2D Replay"
+
+### Map Zones
+- **Filter (4 ชั้น):** Side: Overall/T/CT · Phase: Overall/Pre-plant/Post-plant · Scope: Me/Team · Economy: Overall/Pistol/Eco/Semi-Eco/Force/Full Buy · ⭐ (น่าจะเป็นบันทึก preset)
+- **แผนที่** แบ่งเป็น zone polygon ตาม callout แต่ละ zone แสดง:
+  - **%** = สัดส่วนของเหตุการณ์ kill/death ทั้งหมดที่เกิดใน zone นี้ (บอกว่าเราเล่นตรงนี้บ่อยแค่ไหน)
+  - **KD** = K/D ใน zone นั้น
+  - **สี:** เขียว = K/D สูงกว่า benchmark, น้ำตาล = เท่ากับ benchmark, แดง = ต่ำกว่า และยิ่งเข้มยิ่งห่างจาก benchmark ส่วน zone ที่ไม่มีเหตุการณ์จะไม่ระบายสี
+- **คลิก zone** แสดงจุด kill: ● เขียว = ตำแหน่งที่เรา kill · ○ เขียว = ตำแหน่งเหยื่อ · ● แดง = ตำแหน่งที่เราตาย · ○ แดง = ตำแหน่งคนที่ฆ่าเรา
+- ใช้ mouse wheel zoom ได้
+- ตัวอย่าง (ch4dum, Dust2): ฝั่ง T เล่น A Long/Pit บ่อย (32%, KD 0.75 สีแดง) · ฝั่ง CT อยู่ Mid/CT 29% KD 7 (เขียวเข้ม) · CT post-plant แพ้ที่ B site (33%, KD 1 แดง)
+
+### 2D Replay
+- หน้า paywall: ทดลองฟรีได้โดยกด "Generate Replay" (replay จะอยู่ 30 วัน)
+- จุดขาย: หาช่วงที่น่าสนใจของรอบได้เร็ว, ดูว่า utility โดนศัตรูไหม, ดูว่าศัตรู lurk มายังไง
+- UI: radar ของแมพ, ไอคอนผู้เล่น/ระเบิด/เส้นยิง, เวลาของรอบ (เช่น 1:12), ปุ่ม play, ความเร็ว x1, timeline ที่มีขีดสีบอกจังหวะ kill
+- ต้นทุนสูง ("these things cost us money") เพราะต้องเก็บตำแหน่งราย tick
 
 ### Match Details → General
 Columns: Kills · Assists · Deaths · K/D · ADR · KAST · 2K · 3K · 4K · 5K · HLTV Rating · Rating · Personal Performance (แยกทีม)
@@ -166,4 +188,5 @@ Columns: Kills · Assists · Deaths · K/D · ADR · KAST · 2K · 3K · 4K · 5
 - **Profile card** เป็น component ที่ใช้ซ้ำทั้งเว็บ ควรออกแบบ data model ตั้งแต่แรก
 - **Column chooser** แสดงว่า metric ทั้งหมดควรอยู่ใน registry เดียว (ชื่อ, หมวด, หน่วย, ทิศทางดี/แย่, format) เพื่อให้ UI สร้าง table ได้อัตโนมัติ และ LLM coach อ่าน registry เดียวกัน
 - **Gamification** (achievements, highlights, personal bests, recaps) คือสิ่งที่ทำให้คนกลับมาเว็บ แต่ไม่ใช่ MVP
-- **ไม่ใช่ MVP:** Win Rate Forecast, Training servers, Clubs, Highlights (ต้อง render วิดีโอ)
+- **Map Zones ทำได้ไม่ยาก:** demoparser2 มี `last_place_name` (ชื่อ callout จาก navmesh) อยู่แล้ว จึงนับ %/KD ต่อ zone ได้ทันที ส่วนที่ต้องเตรียมคือ polygon ของ zone สำหรับวาดบน radar และ benchmark K/D ต่อ zone
+- **ไม่ใช่ MVP:** Win Rate Forecast, Training servers, Clubs, Highlights (ต้อง render วิดีโอ), 2D Replay (ต้องเก็บข้อมูลราย tick ซึ่งเปลือง storage)
