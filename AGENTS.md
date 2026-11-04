@@ -25,14 +25,16 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 | `impactagent/constants.py` | Game constants (team nums, grenade prices, blind threshold, trade window) |
 | `impactagent/parse/demo.py` | `parse_demo(path) -> ParsedDemo` (event tables via demoparser2) |
 | `impactagent/metrics/compute.py` | General + Utility metrics per player, `compute_match_metrics(parsed)` |
-| `data/validation/dust2-f2633f5c.json` | Leetify's real values for `dust2win.dem` (all 10 players). **Gitignored, never commit.** |
+| `impactagent/__main__.py` | CLI: `inspect`, `parse`, `validate` |
+| `impactagent/validate/__init__.py` | Compare our metrics with a truth JSON; aborts if demo and truth look like different matches |
+| `data/validation/dust2-f2633f5c.json` | Leetify's real values for one de_dust2 match (22 rounds, 13:9, all 10 players). **No local demo matches it yet** (`dust2win.dem`, `dust139.dem`, `dust1614.dem` were checked and are other matches); a new demo is coming. **Gitignored, never commit.** |
 | `data/parsed/` | Parser outputs (Parquet). Gitignored. |
 
 ## Current status (2026-11-05)
-Phase 0 (research) and data model v0.1 are done. Parser + General/Utility metrics are **written but never run** (demoparser2 column names were written from memory and may be wrong).
+Phase 0 (research) and data model v0.1 are done. CLI (steps 1-3 below) is done; parser and General/Utility metrics run end to end on `dust2win.dem` and demoparser2 column names are checked. **Step 4 is blocked** until we get the demo that matches the truth JSON. Don't tune the parser to `dust2-f2633f5c.json` before then.
 
 ### Next steps
-1. `pip install -e .` in the `ImpactAgent` env.
+1. `pip install -e .` in the `ImpactAgent` env. (`conda` may not be on PATH in tool shells; call `C:\Users\tamma\miniconda3\envs\ImpactAgent\python.exe` directly.)
 2. Add a CLI (`impactagent/__main__.py`):
    - `python -m impactagent inspect <demo>`: list game events and the columns of `player_death`, `player_hurt`, `weapon_fire`, `player_blind`, `round_end`, and `parse_ticks(["inventory"])`, so column names can be checked.
    - `python -m impactagent parse <demo> [--out data/parsed/<stem>]`: write each table to Parquet.
