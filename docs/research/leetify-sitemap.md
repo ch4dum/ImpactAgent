@@ -49,12 +49,23 @@ Premier rating · AIM (0–100) · UTILITY (0–100) · POSITIONING (0–100) ·
 ### Tabs
 | Tab | Path | Sub-tabs | สถานะ |
 |---|---|---|---|
+| Your Match 🔒 | `your-match` | — (เห็นเฉพาะคนที่อยู่ในแมตช์และ login แล้ว) | ✅ |
 | Overview | `overview` | — | ✅ |
-| Match Details | `details-*` | General · Timeline · Aim · Utility · Activity · Trades · Opening Duels · Clutches | 🟡 General แล้ว |
-| Head to Head | `head-to-head` | | ⏳ |
-| Rating Breakdown | `rating-breakdown` | | ⏳ |
-| Map Zones | `map-zones` | | ⏳ |
+| Match Details | `details-*` | General · Timeline · Aim · Utility · Activity · Trades · Opening Duels · Clutches | ✅ (ดู `docs/metrics/parameters.md`) |
+| Head to Head | `head-to-head` | Simple View · Matrix View | ✅ |
+| Rating Breakdown | `rating-breakdown` | — | ✅ ข้อความ · ⏳ ภาพกราฟ |
+| Map Zones | `map-zones` | | ⏳ รอภาพ |
 | 2D Replay | `2d-replay` | | 🔒 PRO |
+
+### Your Match (personal match report) 🔒
+หน้า "สรุปแมตช์นี้สำหรับคุณ" เป็น tab แรกเมื่อ login และเป็นคนในแมตช์นั้น
+1. **Match Identity:** ตั้งฉายาให้ตามสไตล์การเล่นในแมตช์นั้น เช่น **"The Carry"**
+2. **Your Top 5 Stats:** stat เด่นที่สุด 5 อันดับ แต่ละตัวมี tag "MATCH BEST" และหมวด (IMPACT / TRADES …) เช่น #1 Leetify Rating (CT) +22.80 · #2 Leetify Rating +10.85 · #3 Kills 33 · #4 ADR 141 · #5 Trade Kill Success 6
+3. **This Match vs Last 30 Matches:** เทียบค่าแมตช์นี้กับค่าเฉลี่ย 30 เกมล่าสุดของตัวเอง เช่น Leetify Rating +10.85 vs +4.10 · Aim Rating 81 vs 85 ("better than 85% of players") · Utility Rating 75 vs 65 · Kills 33 vs 21.27 · ADR 141 vs 103 · Opening Duel Attempts 18% vs 30% · Clutch Kills 2 vs 1.78
+4. **Achievements:** "Open Pack" เปิดการ์ด achievement แบบเปิดซองการ์ด (15 ใบในแมตช์นี้)
+5. Post-match Journal (PRO) · Win Rate Forecast
+
+> **นี่คือหน้าที่ใกล้กับสิ่งที่ LLM coach ของเราจะทำมากที่สุด** แต่ Leetify ใช้ template ตายตัว (เลือก top stat + เทียบค่าเฉลี่ย) ส่วนเราเขียนเป็น narrative ได้ เช่น "แมตช์นี้แบกฝั่ง CT จาก clutch รอบ 16 แต่เข้า opening duel น้อยกว่าปกติ (18% vs 30%) …" แล้วเปิดให้ถามต่อได้
 
 ### Overview
 - **Top 3 players** ตาม Leetify Rating (ถ้วยทอง/เงิน/ทองแดง + รูป agent skin)

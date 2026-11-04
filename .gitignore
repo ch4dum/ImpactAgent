@@ -25,3 +25,6 @@ data/parsed/
 Thumbs.db
 .vscode/
 .idea/
+
+# Local validation data copied from Leetify UI (do not commit, see docs/metrics/parameters.md)
+data/validation/
