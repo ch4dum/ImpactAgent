@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+.next/
+dist/
+
+# Demo files & parsed outputs (never commit — 200MB+ each)
+*.dem
+*.dem.bz2
+*.dem.zst
+*.parquet
+data/raw/
+data/parsed/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
