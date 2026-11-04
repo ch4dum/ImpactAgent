@@ -1,7 +1,9 @@
 """Compare our per-player metrics with a ground-truth JSON (data/validation/*.json).
 
-Truth format: {"rounds": int, "players": {name: {metric: value, ..., "steam_id"?: str}}}.
-Ratios are 0-1. Players are matched by steam_id when given, else by in-game name.
+Truth format: {"demo": path, "map": str, "rounds": int,
+               "players": {name: {metric: value | null, ..., "steam_id"?: str, "aliases"?: [str]}}}.
+Ratios are 0-1; null / absent metrics are skipped. Players are matched by steam_id, else by
+name or one of its aliases.
 """
 
 from __future__ import annotations
@@ -21,8 +23,9 @@ COUNT_METRICS = {
     "he_damage_enemies", "molotov_damage_enemies", "shots_fired",
 }
 RATIO_REL_TOL = 0.03  # ~3% target from AGENTS.md
-# Truth values are copied from a UI that rounds; allow half of the last shown digit.
-ROUNDING_ABS_TOL = 0.005
+# Truth values are copied from a UI that rounds; allow half of the last shown digit
+# (+ epsilon: 0.125 shown as 0.13 is exactly 0.005 off).
+ROUNDING_ABS_TOL = 0.005 + 1e-9
 
 
 def _is_nan(v) -> bool:
@@ -45,18 +48,30 @@ def _status(metric: str, ours, theirs, implemented: bool = True) -> str:
 
 
 def match_players(ours: pd.DataFrame, truth_players: dict) -> dict[str, str]:
-    """truth name -> our steam_id."""
+    """truth name -> our steam_id.
+
+    Order: steam_id, then the truth name and its "aliases" (in-game names seen in the demo),
+    exact first, then case-insensitive. A demo player is never matched twice.
+    """
     by_name = {str(n): sid for sid, n in ours["name"].items()}
     by_name_ci = {str(n).casefold(): sid for sid, n in ours["name"].items()}
-    out = {}
+    out: dict[str, str] = {}
     for name, vals in truth_players.items():
         sid = str(vals.get("steam_id") or "")
         if sid and sid in ours.index:
             out[name] = sid
-        elif name in by_name:
-            out[name] = by_name[name]
-        elif name.casefold() in by_name_ci:
-            out[name] = by_name_ci[name.casefold()]
+    used = set(out.values())
+    for name, vals in truth_players.items():
+        if name in out:
+            continue
+        candidates = [name, *(vals.get("aliases") or [])]
+        hit = next((by_name[c] for c in candidates if c in by_name and by_name[c] not in used), None)
+        if hit is None:
+            hit = next((by_name_ci[c.casefold()] for c in candidates
+                        if c.casefold() in by_name_ci and by_name_ci[c.casefold()] not in used), None)
+        if hit is not None:
+            out[name] = hit
+            used.add(hit)
     return out
 
 
@@ -102,16 +117,46 @@ def check_same_match(p, ours: pd.DataFrame, truth: dict) -> list[str]:
     return problems
 
 
-def validate(demo: str | Path, truth_path: str | Path, metrics: list[str] | None = None,
-             only_diff: bool = False, force: bool = False) -> int:
+def _run(demo: str | Path, truth: dict, metrics: list[str] | None = None):
+    """-> (problems, comparison df without unimplemented rows, unimplemented metric names)."""
     from impactagent.metrics.compute import compute_match_metrics
     from impactagent.parse.demo import parse_demo
 
-    truth = json.loads(Path(truth_path).read_text(encoding="utf-8"))
     p = parse_demo(demo)
     ours = compute_match_metrics(p)
-
     problems = check_same_match(p, ours, truth)
+    df = compare(ours, truth, metrics)
+    not_impl = sorted(df.loc[df["status"] == "missing", "metric"].unique())
+    return problems, df[df["status"] != "missing"], not_impl
+
+
+def validate_all(truth_dir: str | Path = "data/validation", metrics: list[str] | None = None) -> int:
+    """Validate every truth JSON whose "demo" exists; print one score line per pair + OFF rows."""
+    failed = False
+    for path in sorted(Path(truth_dir).glob("*.json")):
+        truth = json.loads(path.read_text(encoding="utf-8"))
+        demo = Path(truth.get("demo") or "")
+        if not demo.is_file():
+            print(f"{path.name:<28} SKIP (demo not found: {demo})")
+            continue
+        problems, df, _ = _run(demo, truth, metrics)
+        if problems:
+            print(f"{path.name:<28} SKIP (different match: {'; '.join(problems)[:120]})")
+            continue
+        n_ok = int((df["status"] == "ok").sum())
+        print(f"{path.name:<28} {n_ok}/{len(df)} ok")
+        off = df[df["status"] != "ok"]
+        if not off.empty:
+            failed = True
+            with pd.option_context("display.max_rows", None, "display.width", 200):
+                print(off.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
+    return 1 if failed else 0
+
+
+def validate(demo: str | Path, truth_path: str | Path, metrics: list[str] | None = None,
+             only_diff: bool = False, force: bool = False) -> int:
+    truth = json.loads(Path(truth_path).read_text(encoding="utf-8"))
+    problems, df, not_impl = _run(demo, truth, metrics)
     if problems:
         print("Demo and truth file look like DIFFERENT matches:")
         for msg in problems:
@@ -120,14 +165,11 @@ def validate(demo: str | Path, truth_path: str | Path, metrics: list[str] | None
             print("Aborting (use --force to compare anyway).")
             return 2
 
-    df = compare(ours, truth, metrics)
     if df.empty:
         print("Nothing to compare.")
         return 1
-    not_impl = sorted(df.loc[df["status"] == "missing", "metric"].unique())
     if not_impl:
         print(f"Not implemented yet (skipped): {', '.join(not_impl)}\n")
-    df = df[df["status"] != "missing"]
     shown = df[df["status"] != "ok"] if only_diff else df
     with pd.option_context("display.max_rows", None, "display.width", 200):
         print(shown.to_string(index=False, float_format=lambda v: f"{v:.3f}"))

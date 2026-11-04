@@ -47,6 +47,6 @@ NON_GUN_WEAPONS = {"knife", "knife_t", "bayonet", "taser", "c4", "world", "world
 # Leetify: enemies blinded for less than this are ignored.
 MIN_BLIND_SECONDS = 1.1
 
-# Trade window in seconds. NOT published by Leetify. KAST on inferno-44a522c3 bounds it to
-# [2.05, 4.84) s; 4.0 is a placeholder inside that range until trades are calibrated.
+# Trade window in seconds. NOT published by Leetify. KAST + traded deaths + trade kills
+# (succeeded) on inferno-44a522c3 + mirage-65db631a bound it to [3.48, 4.47) s; 4.0 is inside.
 TRADE_WINDOW_SECONDS = 4.0

@@ -23,21 +23,27 @@ from impactagent.constants import (
 from impactagent.parse.demo import ParsedDemo
 
 
+HE_DMG_COL = "dmg_raw"
+HE_TEAM_DMG_COL = "dmg_raw"
+
+
 def _ratio(num: float, den: float) -> float:
     return float(num) / float(den) if den else float("nan")
 
 
 # --------------------------------------------------------------------------- player_rounds
 
-def _assists(p: ParsedDemo) -> pd.DataFrame:
-    """Kills that give the assister an assist (calibrated on inferno-44a522c3, see spec).
+def _assists(p: ParsedDemo, flash: bool = False) -> pd.DataFrame:
+    """Kills that give the assister an assist (validated on 2 matches, see spec).
 
-    Counted on every death, including team kills, when the assister is an enemy of the victim.
-    Flash-only assists (assistedflash) are not assists, and helping an enemy kill your own
-    teammate is not an assist.
+    Counted on every death, including team kills, when the assister is an enemy of the victim;
+    helping an enemy kill your own teammate is not an assist.
+    flash=False: damage assists only (Leetify's Assists column; flash assists are not in it).
+    flash=True: flash assists only (they DO count as the "A" in KAST).
     """
     side = p.player_rounds_side.set_index(["round_no", "steam_id"])["side"]
-    k = p.kills[p.kills["assister_id"].notna() & ~p.kills["flash_assist"].astype(bool)].copy()
+    is_flash = p.kills["flash_assist"].astype(bool)
+    k = p.kills[p.kills["assister_id"].notna() & (is_flash if flash else ~is_flash)].copy()
     k["assister_side"] = [side.get((r, s)) for r, s in zip(k["round_no"], k["assister_id"])]
     return k[k["assister_side"] != k["victim_side"]]
 
@@ -52,15 +58,17 @@ def build_player_rounds(p: ParsedDemo) -> pd.DataFrame:
     k = kills.groupby(["round_no", "attacker_id"]).size().rename("kills")
     d = all_deaths.groupby(["round_no", "victim_id"]).size().rename("deaths")
     a = _assists(p).groupby(["round_no", "assister_id"]).size().rename("assists")
+    fa = _assists(p, flash=True).groupby(["round_no", "assister_id"]).size().rename("flash_assists")
     hs = kills[kills["headshot"].astype(bool)].groupby(["round_no", "attacker_id"]).size().rename("hs_kills")
     dm = dmg.groupby(["round_no", "attacker_id"])["dmg_effective"].sum().rename("damage")
 
     pr = pr.set_index(["round_no", "steam_id"])
-    for s in (k, d, a, hs, dm):
+    cols = ("kills", "deaths", "assists", "flash_assists", "hs_kills", "damage")
+    for s in (k, d, a, fa, hs, dm):
         s.index = s.index.set_names(["round_no", "steam_id"])
         pr = pr.join(s)
-    pr = pr.fillna({"kills": 0, "deaths": 0, "assists": 0, "hs_kills": 0, "damage": 0}).reset_index()
-    for c in ("kills", "deaths", "assists", "hs_kills", "damage"):
+    pr = pr.fillna({c: 0 for c in cols}).reset_index()
+    for c in cols:
         pr[c] = pr[c].astype(int)
     pr["survived"] = pr["deaths"] == 0
 
@@ -79,7 +87,8 @@ def build_player_rounds(p: ParsedDemo) -> pd.DataFrame:
         if not later.empty:
             traded.add((death["round_no"], death["victim_id"]))
     pr["traded"] = [(r, s) in traded for r, s in zip(pr["round_no"], pr["steam_id"])]
-    pr["kast"] = (pr["kills"] > 0) | (pr["assists"] > 0) | pr["survived"] | pr["traded"]
+    # A in KAST = damage assist OR flash assist (mirage-65db631a, Boonrywaa r10).
+    pr["kast"] = (pr["kills"] > 0) | (pr["assists"] > 0) | (pr["flash_assists"] > 0) | pr["survived"] | pr["traded"]
     return pr
 
 
@@ -124,7 +133,9 @@ def general_metrics(p: ParsedDemo, pr: pd.DataFrame) -> pd.DataFrame:
     losses = first.groupby("victim_id").size()
     out["opening_attempts"] = wins.reindex(out.index).fillna(0) + losses.reindex(out.index).fillna(0)
     out["opening_wins"] = wins.reindex(out.index).fillna(0)
-    out["opening_attempt_pct"] = out["opening_attempts"] / out["rounds"]
+    # Denominator = rounds in the MATCH, not rounds the player played (mirage-65db631a, J: 6/24).
+    # ADR / KAST / HLTV keep rounds played.
+    out["opening_attempt_pct"] = out["opening_attempts"] / len(p.rounds)
     out["opening_success_pct"] = out["opening_wins"] / out["opening_attempts"].replace(0, np.nan)
     return out
 
@@ -132,18 +143,18 @@ def general_metrics(p: ParsedDemo, pr: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------- utility
 
 def _utility_value(inv, skip_one_of: str | None = None) -> int:
-    """$ value of grenades in an inventory list; optionally ignore one item (just thrown)."""
+    """$ value of grenades in an inventory list, counting each grenade TYPE once.
+
+    Leetify counts 2 flashbangs as one (mirage-65db631a: 7/7 cases). `skip_one_of` drops one
+    item first (a grenade that was just thrown).
+    """
     if inv is None or (isinstance(inv, float) and np.isnan(inv)):
         return 0
-    total = 0
+    items = [str(i).lower() for i in list(inv)]
     skip = skip_one_of.lower() if isinstance(skip_one_of, str) else None
-    for item in list(inv):
-        name = str(item).lower()
-        if name == skip:
-            skip = None
-            continue
-        total += GRENADE_PRICES.get(name, 0)
-    return total
+    if skip in items:
+        items.remove(skip)
+    return sum(GRENADE_PRICES.get(name, 0) for name in set(items))
 
 
 def _unused_utility(p: ParsedDemo, all_kills: pd.DataFrame) -> pd.Series:
@@ -232,9 +243,10 @@ def utility_metrics(p: ParsedDemo, all_kills: pd.DataFrame | None = None) -> pd.
     dmg = p.damages[p.damages["attacker_id"].notna()]
     he = dmg[dmg["weapon"].isin(HE_DAMAGE_WEAPONS)]
     fire = dmg[dmg["weapon"].isin(FIRE_DAMAGE_WEAPONS)]
-    out["he_damage_enemies"] = he[~he["is_team"]].groupby("attacker_id")["dmg_effective"].sum().reindex(out.index).fillna(0)
-    # Team HE damage includes damage to yourself (Leetify, inferno-44a522c3).
-    out["he_damage_team"] = he[he["is_team"]].groupby("attacker_id")["dmg_effective"].sum().reindex(out.index).fillna(0)
+    # HE damage uses raw dmg_health, NOT capped at remaining HP (mirage-65db631a).
+    out["he_damage_enemies"] = he[~he["is_team"]].groupby("attacker_id")[HE_DMG_COL].sum().reindex(out.index).fillna(0)
+    # Team HE damage includes damage to yourself (inferno-44a522c3).
+    out["he_damage_team"] = he[he["is_team"]].groupby("attacker_id")[HE_TEAM_DMG_COL].sum().reindex(out.index).fillna(0)
     out["he_damage_per_he"] = out["he_damage_enemies"] / out["he_thrown"].replace(0, np.nan)
     out["he_team_damage_per_he"] = out["he_damage_team"] / out["he_thrown"].replace(0, np.nan)
     out["molotov_damage_enemies"] = fire[~fire["is_team"]].groupby("attacker_id")["dmg_effective"].sum().reindex(out.index).fillna(0)

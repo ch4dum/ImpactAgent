@@ -80,6 +80,12 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     return validate(args.demo, args.truth, metrics=args.metrics, only_diff=args.only_diff, force=args.force)
 
 
+def _cmd_validate_all(args: argparse.Namespace) -> int:
+    from impactagent.validate import validate_all
+
+    return validate_all(args.dir, metrics=args.metrics)
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):  # Windows consoles + non-ASCII player names
         try:
@@ -110,6 +116,11 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--only-diff", action="store_true", help="hide rows that match")
     v.add_argument("--force", action="store_true", help="compare even if demo/truth look like different matches")
     v.set_defaults(func=_cmd_validate)
+
+    va = sub.add_parser("validate-all", help="validate every truth JSON in a folder against its demo")
+    va.add_argument("--dir", default="data/validation")
+    va.add_argument("--metrics", nargs="*", help="only these metrics")
+    va.set_defaults(func=_cmd_validate_all)
 
     args = ap.parse_args(argv)
     return args.func(args)

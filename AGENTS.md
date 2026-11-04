@@ -29,21 +29,22 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 | `impactagent/metrics/compute.py` | General + Utility metrics per player, `compute_match_metrics(parsed)` |
 | `impactagent/__main__.py` | CLI: `inspect`, `parse`, `validate` |
 | `impactagent/validate/__init__.py` | Compare our metrics with a truth JSON; aborts if demo and truth look like different matches |
-| `data/validation/inferno-44a522c3.json` | **Validation pair:** Leetify's real values for `scripts/demos/003852158461294936246_0991785667.dem.bz2` (de_inferno 13:0, 13 rounds, all 10 players; utility only for our team; read its `note`). **Gitignored, never commit.** |
+| `data/validation/inferno-44a522c3.json` | **Validation pair 1 (calibration):** Leetify's real values for `scripts/demos/003852158461294936246_0991785667.dem.bz2` (de_inferno 13:0, 13 rounds; utility only for our team; read its `note`). **Gitignored, never commit.** |
+| `data/validation/mirage-65db631a.json` | **Validation pair 2 (holdout):** `scripts/demos/003850878442929127864_1489073941.dem.bz2` (de_mirage 13:11, 24 rounds; utility for both teams, some nulls; players may carry `aliases`). Gitignored. |
 | `data/validation/dust2-f2633f5c.json` | Leetify values for a de_dust2 13:9 match. **No local demo matches it** (`dust2win.dem`, `dust139.dem`, `dust1614.dem` are other matches). Don't tune anything to it. Gitignored. |
 | `data/parsed/` | Parser outputs (Parquet). Gitignored. |
 
 ## Current status (2026-11-05)
-Phase 0 (research) and data model v0.1 are done. CLI (`inspect`, `parse`, `validate`) is done. **General + Utility match Leetify 245/245** (player × metric) on the inferno pair. Findings are in `docs/metrics/leetify-metrics-spec.md` §2, §3, §4.
+Phase 0 (research) and data model v0.1 are done. CLI (`inspect`, `parse`, `validate`, `validate-all`) is done. **General + Utility match Leetify on both pairs: inferno 245/245, mirage 290/290** (player × metric). The mirage holdout scored 274/290 before any change; the 4 rules it broke are fixed. Which rules are proven by 2 matches, 1 match, or still hypotheses: `docs/metrics/leetify-metrics-spec.md` §8.
 
-Validate:
+Validate (run after every metric/parser change; all pairs must stay green):
 ```
-python -m impactagent validate scripts/demos/003852158461294936246_0991785667.dem.bz2 --truth data/validation/inferno-44a522c3.json --only-diff
+python -m impactagent validate-all
 ```
 
 ### Next steps
-1. Get a second validation pair (ideally a close game with saves, clutches, a bomb plant per side) and re-run `validate`; one 13:0 stomp can hide rules (e.g. the trade window is only bounded to [2.05, 4.84) s, `TRADE_WINDOW_SECONDS = 4.0` is a placeholder).
-2. Trades: opportunities / attempts (succeeded already matches with a naive 4.0s rule), opening traded %.
+1. Trades: opportunities / attempts (succeeded already matches with a naive 4.0s rule; window bounded to [3.48, 4.47) s), opening traded %.
+2. Hypotheses in spec §8 (🟡) need a match that separates them, e.g. a kill during a ≤ 1.1s blind, capped molotov / team-HE hits.
 3. Then: metric registry YAML (`impactagent/metrics/registry.yaml`, fields in data-model §4), trades (`trade_windows`), opening duels, clutches. Aim metrics need the visibility module (spec §0) and come after.
 
 ## Rules

@@ -150,6 +150,29 @@ def _winner_side(v) -> str | None:
     return None
 
 
+def _effective_damage(d: pd.DataFrame) -> pd.Series:
+    """Health actually removed per hit (validated vs Leetify on 2 matches).
+
+    - Normal hit: min(dmg_health, HP left before the hit).
+    - Killing tick: all hits on the victim in that tick (e.g. shotgun pellets) together remove
+      exactly the HP the victim had before the tick. dmg_health can be ~1 below the real HP loss
+      because damage is fractional, so the last hit takes the remainder.
+    """
+    order = d.sort_values(["round_no", "victim_id", "tick", "victim_hp_after"],
+                          ascending=[True, True, True, False], kind="mergesort")
+    hp_after = order["victim_hp_after"].astype(int)
+    prev_hp = order.groupby(["round_no", "victim_id"])["victim_hp_after"].shift(1).fillna(100).astype(int)
+    eff = np.minimum(order["dmg_raw"].astype(int), prev_hp)
+
+    grp = [order["round_no"], order["victim_id"], order["tick"]]
+    hp_before_tick = prev_hp.groupby(grp).transform("first")
+    is_last = ~order.duplicated(subset=["round_no", "victim_id", "tick"], keep="last")
+    others = eff.groupby(grp).transform("sum") - eff
+    kill_last = is_last & (hp_after <= 0)
+    eff = eff.where(~kill_last, (hp_before_tick - others).clip(lower=0))
+    return eff.astype(int).reindex(d.index)
+
+
 # --------------------------------------------------------------------------- rounds
 
 def _build_rounds(parser: DemoParser, tickrate: int, warnings: list[str]) -> pd.DataFrame:
@@ -321,13 +344,8 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
             "victim_side": _side(d["user_team_num"]) if "user_team_num" in d else None,
         }
     ).reset_index(drop=True)
-    damages = damages.sort_values(["round_no", "victim_id", "tick"]).reset_index(drop=True)
-    prev_hp = damages.groupby(["round_no", "victim_id"])["victim_hp_after"].shift(1).fillna(100)
-    # Health actually removed: capped at remaining HP, and a killing hit takes all remaining HP
-    # (dmg_health can be 1 below it because of fractional damage).
-    damages["dmg_effective"] = np.where(
-        damages["victim_hp_after"] <= 0, prev_hp, np.minimum(damages["dmg_raw"], prev_hp)
-    ).astype(int)
+    damages["dmg_effective"] = _effective_damage(damages)
+    damages = damages.sort_values(["round_no", "victim_id", "tick"], kind="mergesort").reset_index(drop=True)
     damages["is_team"] = damages["attacker_side"].notna() & (damages["attacker_side"] == damages["victim_side"])
 
     # ---- shots (velocity for counter-strafe later)
