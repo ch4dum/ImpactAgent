@@ -25,6 +25,20 @@ GRENADE_PRICES = {
     "decoy grenade": 50,
 }
 
+# Inventory display name (lowercase) -> grenade type.
+GRENADE_ITEM_TYPES = {
+    "flashbang": "flash",
+    "smoke grenade": "smoke",
+    "high explosive grenade": "he",
+    "molotov": "molotov",
+    "incendiary grenade": "molotov",
+    "decoy grenade": "decoy",
+}
+
+# A grenade thrown this long before death can still show in the inventory (and as active
+# weapon) at death. Leetify does not count it as unused utility.
+THROWN_GRENADE_GRACE_SECONDS = 1.0
+
 # Damage weapons that count as utility damage.
 HE_DAMAGE_WEAPONS = {"hegrenade"}
 FIRE_DAMAGE_WEAPONS = {"inferno", "molotov", "incgrenade"}
@@ -33,5 +47,6 @@ NON_GUN_WEAPONS = {"knife", "knife_t", "bayonet", "taser", "c4", "world", "world
 # Leetify: enemies blinded for less than this are ignored.
 MIN_BLIND_SECONDS = 1.1
 
-# Trade window in seconds. NOT published by Leetify — calibrate with data/validation.
-TRADE_WINDOW_SECONDS = 5.0
+# Trade window in seconds. NOT published by Leetify. KAST on inferno-44a522c3 bounds it to
+# [2.05, 4.84) s; 4.0 is a placeholder inside that range until trades are calibrated.
+TRADE_WINDOW_SECONDS = 4.0

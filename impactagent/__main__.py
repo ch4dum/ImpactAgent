@@ -8,16 +8,30 @@ from pathlib import Path
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
+    from impactagent.parse.demo import _demo_file
+
+    with _demo_file(args.demo) as (dem_path, _sha):
+        return _inspect(dem_path, args.events)
+
+
+def _demo_stem(path: Path) -> str:
+    name = path.name
+    for ext in (".bz2", ".gz", ".zst"):
+        name = name.removesuffix(ext)
+    return name.removesuffix(".dem")
+
+
+def _inspect(dem_path: Path, event_names: list[str]) -> int:
     import pandas as pd
     from demoparser2 import DemoParser
 
-    parser = DemoParser(str(args.demo))
+    parser = DemoParser(str(dem_path))
     print("header:", parser.parse_header())
     events = sorted(parser.list_game_events())
     print(f"\ngame events ({len(events)}):")
     for e in events:
         print("  ", e)
-    for name in args.events:
+    for name in event_names:
         try:
             df = pd.DataFrame(parser.parse_event(name))
         except Exception as exc:  # noqa: BLE001
@@ -40,7 +54,7 @@ def _cmd_parse(args: argparse.Namespace) -> int:
     from impactagent.parse.demo import parse_demo
 
     p = parse_demo(args.demo)
-    out = Path(args.out or f"data/parsed/{Path(args.demo).stem}")
+    out = Path(args.out or f"data/parsed/{_demo_stem(Path(args.demo))}")
     out.mkdir(parents=True, exist_ok=True)
     tables = p.tables()
     det = p.grenades.attrs.get("detonations")

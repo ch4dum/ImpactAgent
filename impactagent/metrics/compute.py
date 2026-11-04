@@ -6,14 +6,18 @@ matching the metric_values table in docs/design/data-model.md.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 
 from impactagent.constants import (
     FIRE_DAMAGE_WEAPONS,
+    GRENADE_ITEM_TYPES,
     GRENADE_PRICES,
     HE_DAMAGE_WEAPONS,
     MIN_BLIND_SECONDS,
+    THROWN_GRENADE_GRACE_SECONDS,
     TRADE_WINDOW_SECONDS,
 )
 from impactagent.parse.demo import ParsedDemo
@@ -25,6 +29,19 @@ def _ratio(num: float, den: float) -> float:
 
 # --------------------------------------------------------------------------- player_rounds
 
+def _assists(p: ParsedDemo) -> pd.DataFrame:
+    """Kills that give the assister an assist (calibrated on inferno-44a522c3, see spec).
+
+    Counted on every death, including team kills, when the assister is an enemy of the victim.
+    Flash-only assists (assistedflash) are not assists, and helping an enemy kill your own
+    teammate is not an assist.
+    """
+    side = p.player_rounds_side.set_index(["round_no", "steam_id"])["side"]
+    k = p.kills[p.kills["assister_id"].notna() & ~p.kills["flash_assist"].astype(bool)].copy()
+    k["assister_side"] = [side.get((r, s)) for r, s in zip(k["round_no"], k["assister_id"])]
+    return k[k["assister_side"] != k["victim_side"]]
+
+
 def build_player_rounds(p: ParsedDemo) -> pd.DataFrame:
     """One row per player per round: K, D, A, damage, survived, traded, KAST."""
     pr = p.player_rounds_side.copy()
@@ -34,7 +51,7 @@ def build_player_rounds(p: ParsedDemo) -> pd.DataFrame:
 
     k = kills.groupby(["round_no", "attacker_id"]).size().rename("kills")
     d = all_deaths.groupby(["round_no", "victim_id"]).size().rename("deaths")
-    a = kills[kills["assister_id"].notna()].groupby(["round_no", "assister_id"]).size().rename("assists")
+    a = _assists(p).groupby(["round_no", "assister_id"]).size().rename("assists")
     hs = kills[kills["headshot"].astype(bool)].groupby(["round_no", "attacker_id"]).size().rename("hs_kills")
     dm = dmg.groupby(["round_no", "attacker_id"])["dmg_effective"].sum().rename("damage")
 
@@ -114,16 +131,54 @@ def general_metrics(p: ParsedDemo, pr: pd.DataFrame) -> pd.DataFrame:
 
 # --------------------------------------------------------------------------- utility
 
-def _utility_value(inv) -> int:
+def _utility_value(inv, skip_one_of: str | None = None) -> int:
+    """$ value of grenades in an inventory list; optionally ignore one item (just thrown)."""
     if inv is None or (isinstance(inv, float) and np.isnan(inv)):
         return 0
     total = 0
+    skip = skip_one_of.lower() if isinstance(skip_one_of, str) else None
     for item in list(inv):
-        total += GRENADE_PRICES.get(str(item).lower(), 0)
+        name = str(item).lower()
+        if name == skip:
+            skip = None
+            continue
+        total += GRENADE_PRICES.get(name, 0)
     return total
 
 
-def utility_metrics(p: ParsedDemo) -> pd.DataFrame:
+def _unused_utility(p: ParsedDemo, all_kills: pd.DataFrame) -> pd.Series:
+    """Average $ of grenades held at death (calibrated on inferno-44a522c3, see spec).
+
+    - A grenade thrown <= THROWN_GRENADE_GRACE_SECONDS before death that is still the active
+      weapon is not counted.
+    - Denominator = every death event incl. post-match ones (Leetify does this).
+    """
+    inv = p.death_inventory
+    if inv.empty:
+        return pd.Series(dtype=float)
+    deaths = all_kills[["tick", "victim_id", "round_no"]].rename(columns={"victim_id": "steam_id"})
+    inv = deaths.merge(inv, on=["tick", "steam_id"], how="left")
+    grace = int(THROWN_GRENADE_GRACE_SECONDS * p.tickrate)
+    throws = p.grenades
+
+    def just_thrown(row) -> str | None:
+        active = row.get("active_weapon")
+        gtype = GRENADE_ITEM_TYPES.get(str(active).lower())
+        if gtype is None:
+            return None
+        t = throws[
+            (throws["thrower_id"] == row["steam_id"])
+            & (throws["type"] == gtype)
+            & (throws["throw_tick"] <= row["tick"])
+            & (throws["throw_tick"] >= row["tick"] - grace)
+        ]
+        return active if not t.empty else None
+
+    inv["value"] = [_utility_value(r["inventory"], just_thrown(r)) for _, r in inv.iterrows()]
+    return inv.groupby("steam_id")["value"].mean()
+
+
+def utility_metrics(p: ParsedDemo, all_kills: pd.DataFrame | None = None) -> pd.DataFrame:
     ids = p.players["steam_id"]
     out = pd.DataFrame(index=pd.Index(ids, name="steam_id"))
 
@@ -132,18 +187,24 @@ def utility_metrics(p: ParsedDemo) -> pd.DataFrame:
         out[f"{t}_thrown"] = thrown[t].reindex(out.index).fillna(0).astype(int) if t in thrown else 0
 
     bl = p.blinds[p.blinds["thrower_id"].notna()]
+    # Blinds on players who are already dead don't count (player_blind still fires for them).
+    death_tick = p.kills.groupby(["round_no", "victim_id"])["tick"].min()
+    dead_at = pd.Series([death_tick.get((r, v)) for r, v in zip(bl["round_no"], bl["victim_id"])], index=bl.index)
+    bl = bl[~(dead_at.notna() & (dead_at < bl["tick"]))]
     long = bl[bl["duration"] > MIN_BLIND_SECONDS]
     enemy = long[~long["is_teammate"]]
     friend = long[long["is_teammate"] | (long["thrower_id"] == long["victim_id"])]
+    enemy_any = bl[~bl["is_teammate"]]
     out["enemies_flashed"] = enemy.groupby("thrower_id").size().reindex(out.index).fillna(0).astype(int)
     out["friends_flashed"] = friend.groupby("thrower_id").size().reindex(out.index).fillna(0).astype(int)
     out["enemies_flashed_per_flash"] = out["enemies_flashed"] / out["flash_thrown"].replace(0, np.nan)
     out["friends_flashed_per_flash"] = out["friends_flashed"] / out["flash_thrown"].replace(0, np.nan)
     out["enemy_blind_seconds_total"] = enemy.groupby("thrower_id")["duration"].sum().reindex(out.index).fillna(0)
 
-    # Blind duration: per flash, longest enemy blind; averaged over flashes that hit >=1 enemy.
-    key = "entity_id" if enemy["entity_id"].notna().any() else "tick"
-    per_flash = enemy.groupby(["thrower_id", key])["duration"].max()
+    # Blind duration: per flash, longest enemy blind; averaged over flashes that blinded >=1 live
+    # enemy for ANY duration (no 1.1s cut here, and no cut at the victim's death).
+    key = "entity_id" if enemy_any["entity_id"].notna().any() else "tick"
+    per_flash = enemy_any.groupby(["thrower_id", key])["duration"].max()
     out["flash_blind_duration_avg"] = per_flash.groupby(level=0).mean().reindex(out.index)
 
     # Flash assists (from kill events)
@@ -164,34 +225,32 @@ def utility_metrics(p: ParsedDemo) -> pd.DataFrame:
         if not b.empty:
             leading.append(b.sort_values("tick").iloc[-1]["thrower_id"])
     out["flashes_leading_to_kill"] = pd.Series(leading, dtype="object").value_counts().reindex(out.index).fillna(0).astype(int)
+    # Per KILL (one flash can count several times), by anyone incl. the thrower, / flashes thrown.
+    out["flash_assist_pct"] = out["flashes_leading_to_kill"] / out["flash_thrown"].replace(0, np.nan)
 
     # HE / fire damage
     dmg = p.damages[p.damages["attacker_id"].notna()]
     he = dmg[dmg["weapon"].isin(HE_DAMAGE_WEAPONS)]
     fire = dmg[dmg["weapon"].isin(FIRE_DAMAGE_WEAPONS)]
     out["he_damage_enemies"] = he[~he["is_team"]].groupby("attacker_id")["dmg_effective"].sum().reindex(out.index).fillna(0)
-    out["he_damage_team"] = he[he["is_team"] & (he["attacker_id"] != he["victim_id"])].groupby("attacker_id")["dmg_effective"].sum().reindex(out.index).fillna(0)
+    # Team HE damage includes damage to yourself (Leetify, inferno-44a522c3).
+    out["he_damage_team"] = he[he["is_team"]].groupby("attacker_id")["dmg_effective"].sum().reindex(out.index).fillna(0)
     out["he_damage_per_he"] = out["he_damage_enemies"] / out["he_thrown"].replace(0, np.nan)
     out["he_team_damage_per_he"] = out["he_damage_team"] / out["he_thrown"].replace(0, np.nan)
     out["molotov_damage_enemies"] = fire[~fire["is_team"]].groupby("attacker_id")["dmg_effective"].sum().reindex(out.index).fillna(0)
 
-    # Unused utility on death
-    inv = p.death_inventory.copy()
-    if not inv.empty:
-        deaths = p.kills[["tick", "victim_id"]].rename(columns={"victim_id": "steam_id"})
-        inv = deaths.merge(inv, on=["tick", "steam_id"], how="left")
-        inv["value"] = inv["inventory"].map(_utility_value)
-        out["unused_utility_on_death_avg"] = inv.groupby("steam_id")["value"].mean().reindex(out.index)
-    else:
-        out["unused_utility_on_death_avg"] = np.nan
+    out["unused_utility_on_death_avg"] = _unused_utility(p, all_kills if all_kills is not None else p.kills).reindex(out.index)
     return out
 
 
 # --------------------------------------------------------------------------- all
 
 def compute_match_metrics(p: ParsedDemo) -> pd.DataFrame:
+    all_kills = p.kills
+    if "post_match" in all_kills:  # post-match deaths only feed the unused-utility denominator
+        p = replace(p, kills=all_kills[~all_kills["post_match"]].reset_index(drop=True))
     pr = build_player_rounds(p)
     gen = general_metrics(p, pr)
-    util = utility_metrics(p)
+    util = utility_metrics(p, all_kills)
     names = p.players.set_index("steam_id")[["name", "team"]]
     return names.join(gen).join(util)

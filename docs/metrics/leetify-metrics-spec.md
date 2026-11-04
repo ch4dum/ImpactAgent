@@ -73,16 +73,18 @@ Leetify **ไม่ใช้** radar spotted ของเกม (ช้าได
 
 | Metric | นิยาม Leetify | สถานะ |
 |---|---|---|
-| Enemies Flashed / Flash | ศัตรูที่ตาบอด **> 1.1s** ÷ flash ที่โยน (สูงสุด 5) | ✅ |
-| Teammates Flashed / Flash | เหมือนกัน แต่นับเพื่อน **รวมตัวเองด้วย** | ✅ |
-| Flash Blind Duration | ต่อ flash เอาค่าตาบอด **นานสุด** ของศัตรู แล้วเฉลี่ยเฉพาะ flash ที่โดนศัตรู ≥ 1 คน | ✅ |
-| Flashbangs Leading to Kills | ศัตรูที่ถูก kill ระหว่างตาบอดจาก flash เรา (> 1.1s) โดยเราหรือเพื่อน | ✅ |
-| HE Damage / HE | damage HE ใส่ศัตรูรวม ÷ HE ที่โยน | ✅ |
-| Unused Utility on Death | มูลค่า $ ของระเบิดที่ถือตอนตาย เฉลี่ยต่อการตาย | ✅ |
+| Enemies Flashed / Flash | ศัตรูที่ตาบอด **> 1.1s** ÷ flash ที่โยน (สูงสุด 5). **ไม่นับคนที่ตายไปแล้ว** (`player_blind` ยังยิงให้ศพ) และไม่ตัด duration ตอนเหยื่อตาย | ✅ verified |
+| Teammates Flashed / Flash | เหมือนกัน แต่นับเพื่อน **รวมตัวเองด้วย** | ✅ verified |
+| Flash Blind Duration | ต่อ flash เอาค่าตาบอด **นานสุด** ของศัตรูที่ยังมีชีวิต แล้วเฉลี่ยทุก flash ที่โดนศัตรู ≥ 1 คน **กี่วินาทีก็ได้ (ไม่มีเกณฑ์ 1.1s ตรงนี้)**. ไม่มี flash โดนเลย = Leetify แสดง 0 | ✅ verified |
+| Flash Assist % | kill ที่ศัตรูยังตาบอดจาก flash เรา (โดยใครก็ได้ในทีม **รวมตัวเอง**) นับ **ต่อ kill** (flash ลูกเดียวได้หลาย kill) ÷ flash ที่โยน. ไม่ใช่ `assistedflash` ของเกม | ✅ verified |
+| Flashbangs Leading to Kills | ตัวเศษของ Flash Assist % ข้างบน | ✅ verified (ผ่าน Flash Assist %) |
+| HE Damage / HE | damage HE ใส่ศัตรูรวม ÷ HE ที่โยน | ✅ verified |
+| HE Team Damage / HE | damage HE ใส่เพื่อน **รวมตัวเอง** ÷ HE ที่โยน | ✅ verified |
+| Unused Utility on Death | มูลค่า $ ของระเบิดที่ถือตอนตาย เฉลี่ยต่อการตาย. ระเบิดที่**เพิ่งปา** (≤ 1s ก่อนตาย ยังเป็น active weapon) ไม่นับ. ตัวหาร**รวม death หลังจบแมตช์**ด้วย (มูลค่า 0) | ✅ verified |
 | [CT] Smokes That Stopped a Push | smoke ฝั่ง CT ที่มีศัตรูอยู่ใน **800 units** จากจุดที่ควันบาน ÷ smoke CT ทั้งหมด | 🟡 ไม่รู้ว่าวัดช่วงเวลาไหนหลังควันบาน |
 
 **ต้องใช้:** `player_blind` (`blind_duration`, `attacker`), `flashbang_detonate`, `hegrenade_detonate`, `smokegrenade_detonate`, `player_hurt` (weapon=hegrenade), `player_death` + inventory ตอนตาย, ราคาระเบิด
-- **คำถามค้าง:** "kill ระหว่างตาบอด" คิดจาก blind_duration ที่เหลือ ณ tick ที่ตาย หรือเช็คแค่ว่าโดน flash ไม่นานก่อนตาย
+- ~~คำถามค้าง: "kill ระหว่างตาบอด"~~ ใช้ `blind_tick ≤ kill_tick ≤ blind_tick + duration` แล้วตรง (ทุกเคสใน inferno-44a522c3 เป็น blind > 1.1s จึงยังไม่รู้ว่า Leetify ใช้เกณฑ์ 1.1s ตรงนี้ด้วยไหม)
 
 ---
 
@@ -91,7 +93,7 @@ Leetify **ไม่ใช้** radar spotted ของเกม (ช้าได
 - **Trade Kills:** opportunities / attempts / succeeded หมายถึงตอนเพื่อนตาย เรามีโอกาส trade ไหม ได้พยายามไหม และสำเร็จไหม
 - **Traded Deaths:** ฝั่งกลับกัน คือตอนเราตาย เพื่อนมีโอกาส trade ให้ไหม และสำเร็จไหม
 - **Glossary ไม่ได้ให้ตัวเลข** ต้องหาเองว่า:
-  - trade window กี่วินาที (ที่นิยมใช้กันราว 3–5s)
+  - trade window กี่วินาที: จาก KAST ของ inferno-44a522c3 ได้ **[2.05, 4.84) s** (trade ที่ 2.05s ต้องนับ, ที่ 4.84s ต้องไม่นับ). ตอนนี้ใช้ 4.0s. ที่ 4.0s นับแบบง่าย (คนฆ่าเราถูกเพื่อนเราฆ่าภายใน window) ได้ traded deaths succeeded และ trade kills succeeded ตรงครบ 10 คน แต่ยังไม่ได้ calibrate
   - "opportunity" คืออะไร: ยังมีชีวิต + อยู่ใกล้ในระยะ X หรือ + เห็นคนฆ่า
   - "attempt" คืออะไร: ยิง/ทำ damage ใส่คนฆ่าภายใน window หรือแค่วิ่งเข้าหา
 - **วิธีหา:** calibrate กับค่าจาก Leetify API ของแมตช์ที่เรามีทั้ง `.dem` และหน้า Leetify (ดูข้อ 6)
@@ -103,6 +105,12 @@ Leetify **ไม่ใช้** radar spotted ของเกม (ช้าได
 kills, deaths, assists, HS kills, K/D, damage, ADR (`dpr`), KAST, rounds survived, multi-kills 1k–5k, rounds won/lost, MVP, score
 - ตรงไปตรงมา แต่ระวัง: ต้องตัด warmup/knife round, ต้องจัดการ damage ที่เกิน HP ที่เหลือ (ADR ส่วนใหญ่ cap ที่ HP ที่เหลือ), team damage และ suicide
 - KAST ต้องใช้ trade window เดียวกับข้อ 3
+- **สิ่งที่ยืนยันแล้ว (inferno-44a522c3, ตรงครบ 10 คน):**
+  - **Damage** = HP ที่หายจริง: `min(dmg_health, HP ที่เหลือ)` และ**นัดที่ฆ่า = HP ที่เหลือทั้งหมด** (`dmg_health` อาจน้อยกว่า HP ที่หายจริง 1 เพราะ damage เป็นเศษ). ไม่รวม team damage
+  - **Deaths** นับทุกการตายรวมโดน teamkill. **ไม่นับ** death หลังจบแมตช์ (หลัง `cs_win_panel_match` เช่น world suicide ตอนขึ้น scoreboard)
+  - **Assists** คิดจาก `assister` ของทุก death **รวม teamkill** (เช่นเราทำ damage ใส่ศัตรูแล้วเพื่อนเขา teamkill = assist ของเรา) ถ้าผู้ assist อยู่คนละทีมกับเหยื่อ. **ไม่นับ** flash assist (`assistedflash`) และการ assist ให้ศัตรูฆ่าเพื่อนตัวเอง
+  - **Opening duel** = kill แรกของรอบที่ไม่ใช่ teamkill/suicide: ตรงครบ 13 รอบ, attempt % / success % ตรง
+  - Leetify General ไม่มีคอลัมน์ 1K
 
 ---
 
@@ -125,7 +133,8 @@ kills, deaths, assists, HS kills, K/D, damage, ADR (`dpr`), KAST, rounds survive
 
 ## 6. วิธี validate
 
-1. หาแมตช์ที่มีทั้ง `.dem` และข้อมูลบน Leetify (เช่น `dust2win.dem` ↔ game `f2633f5c-…`, 13:9 Dust2)
+1. หาแมตช์ที่มีทั้ง `.dem` และข้อมูลบน Leetify. คู่ที่ใช้อยู่: `scripts/demos/003852158461294936246_0991785667.dem.bz2` ↔ `data/validation/inferno-44a522c3.json` (Inferno 13:0). **`dust2-f2633f5c.json` ยังไม่มี demo ที่ตรง** (`dust2win.dem` เป็นคนละแมตช์)
+   - ก่อน validate ให้เช็ค map + จำนวนรอบ + ชื่อผู้เล่นว่าตรงกันก่อน (`validate` ทำให้เองและหยุดถ้าไม่ตรง)
 2. ดึงค่าจาก Leetify API แล้วเทียบกับที่เราคำนวณ ราย player ราย metric
 3. ใช้ตอน dev เท่านั้น: [developer guidelines](https://leetify.com/blog/leetify-api-developer-guidelines) **ห้ามเก็บข้อมูลจาก API ไว้** และถ้าจะแสดงข้อมูล Leetify บนเว็บต้องใส่ attribution "Data Provided by Leetify" และห้ามเอาชื่อ Leetify มาใช้ในชื่อแอป
 4. เป้าหมาย: ✅ ต่างไม่เกิน ~2–3%, 🟡 calibrate จนใกล้เคียง, 🔴 ดูแค่ correlation

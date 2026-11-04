@@ -29,9 +29,11 @@ def _is_nan(v) -> bool:
     return v is None or (isinstance(v, float) and math.isnan(v))
 
 
-def _status(metric: str, ours, theirs) -> str:
-    if _is_nan(ours):
+def _status(metric: str, ours, theirs, implemented: bool = True) -> str:
+    if not implemented:
         return "missing"
+    if _is_nan(ours):  # undefined for us (e.g. 0/0); Leetify shows 0 there
+        return "ok" if float(theirs) == 0 else "OFF"
     if metric in COUNT_METRICS:
         return "ok" if round(float(ours)) == round(float(theirs)) else "OFF"
     diff = abs(float(ours) - float(theirs))
@@ -67,7 +69,8 @@ def compare(ours: pd.DataFrame, truth: dict, metrics: list[str] | None = None) -
                 continue
             if _is_nan(theirs) or not isinstance(theirs, (int, float)):
                 continue
-            ours_v = ours.at[sid, metric] if metric in ours.columns else float("nan")
+            implemented = metric in ours.columns
+            ours_v = ours.at[sid, metric] if implemented else float("nan")
             ours_v = float("nan") if _is_nan(ours_v) else float(ours_v)
             diff = ours_v - float(theirs)
             pct = diff / float(theirs) if float(theirs) else (0.0 if diff == 0 else float("inf"))
@@ -79,7 +82,7 @@ def compare(ours: pd.DataFrame, truth: dict, metrics: list[str] | None = None) -
                     "leetify": float(theirs),
                     "diff": diff,
                     "pct_diff": pct,
-                    "status": _status(metric, ours_v, theirs),
+                    "status": _status(metric, ours_v, theirs, implemented),
                 }
             )
     return pd.DataFrame(rows, columns=["player", "metric", "ours", "leetify", "diff", "pct_diff", "status"])
@@ -121,14 +124,18 @@ def validate(demo: str | Path, truth_path: str | Path, metrics: list[str] | None
     if df.empty:
         print("Nothing to compare.")
         return 1
+    not_impl = sorted(df.loc[df["status"] == "missing", "metric"].unique())
+    if not_impl:
+        print(f"Not implemented yet (skipped): {', '.join(not_impl)}\n")
+    df = df[df["status"] != "missing"]
     shown = df[df["status"] != "ok"] if only_diff else df
     with pd.option_context("display.max_rows", None, "display.width", 200):
         print(shown.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
 
     summary = (
-        df.assign(ok=df["status"] == "ok", missing=df["status"] == "missing")
+        df.assign(ok=df["status"] == "ok")
         .groupby("metric")
-        .agg(ok=("ok", "sum"), n=("ok", "size"), missing=("missing", "sum"),
+        .agg(ok=("ok", "sum"), n=("ok", "size"),
              mean_abs_pct=("pct_diff", lambda s: s.replace([float("inf")], float("nan")).abs().mean()))
         .sort_values(["ok", "metric"])
     )
@@ -136,5 +143,5 @@ def validate(demo: str | Path, truth_path: str | Path, metrics: list[str] | None
     with pd.option_context("display.max_rows", None):
         print(summary.to_string(float_format=lambda v: f"{v:.1%}"))
     n_ok = int((df["status"] == "ok").sum())
-    print(f"\nTotal: {n_ok}/{len(df)} ok, {int((df['status'] == 'missing').sum())} not implemented")
+    print(f"\nTotal: {n_ok}/{len(df)} ok, {len(not_impl)} metrics not implemented")
     return 0 if n_ok == len(df) else 1

@@ -66,9 +66,11 @@
 
 ### 2.3 Event level (Parquet)
 **`kills`** (เก็บใน Postgres ด้วย เพราะใช้บ่อย)
-match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash_assister_id, weapon, headshot, wallbang, through_smoke, noscope, attacker_blind, attacker_side, victim_side, is_team_kill, **attacker_xyz, victim_xyz, attacker_place, victim_place**, is_opening, **traded_by_kill_tick** (nullable), is_trade_kill
+match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash_assister_id, weapon, headshot, wallbang, through_smoke, noscope, attacker_blind, attacker_side, victim_side, is_team_kill, **attacker_xyz, victim_xyz, attacker_place, victim_place**, is_opening, **traded_by_kill_tick** (nullable), is_trade_kill, **post_match** (death หลัง `cs_win_panel_match` เช่น world suicide ตอนขึ้น scoreboard: ทุก metric ต้องกรองทิ้ง ยกเว้นตัวหารของ unused utility)
 
-**`damages`**: match_id, round_no, tick, attacker_id, victim_id, weapon, hitgroup, dmg_raw, **dmg_effective** (capped), dmg_armor, victim_hp_after, is_team
+**`damages`**: match_id, round_no, tick, attacker_id, victim_id, weapon, hitgroup, dmg_raw, **dmg_effective** (HP ที่หายจริง: cap ที่ HP ที่เหลือ และนัดที่ฆ่าได้ = HP ที่เหลือทั้งหมด), dmg_armor, victim_hp_after, is_team
+
+**`death_inventory`**: match_id, tick, steam_id, inventory (list ชื่อ item), active_weapon. หนึ่งแถวต่อการตาย (เฉพาะคนที่ตาย ณ tick นั้น อ่านจาก tick − 1). ใช้คิด unused utility
 
 **`shots`**: match_id, round_no, tick, shooter_id, weapon, pitch, yaw, xyz, **speed_2d**, ducking, scoped, **spray_id**, shot_index_in_spray, enemy_spotted, hit_victim_id (nullable), engagement_id (nullable)
 

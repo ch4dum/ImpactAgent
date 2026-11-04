@@ -5,7 +5,11 @@ Only events are kept; no per-tick position data.
 
 from __future__ import annotations
 
+import gc
 import hashlib
+import os
+import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -53,12 +57,62 @@ class ParsedDemo:
 
 # --------------------------------------------------------------------------- helpers
 
-def _sha256(path: Path, chunk: int = 1 << 20) -> str:
+_CHUNK = 1 << 20
+
+
+def _sha256(path: Path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
-        while b := f.read(chunk):
+        while b := f.read(_CHUNK):
             h.update(b)
     return h.hexdigest()
+
+
+def _open_compressed(path: Path):
+    """Binary stream that decompresses `path`, or None if it is a plain .dem."""
+    suffix = path.suffix.lower()
+    if suffix == ".bz2":
+        import bz2
+        return bz2.open(path, "rb")
+    if suffix == ".gz":
+        import gzip
+        return gzip.open(path, "rb")
+    if suffix == ".zst":
+        try:
+            import zstandard
+        except ImportError as exc:
+            raise ImportError("Reading .dem.zst needs the 'zstandard' package: pip install zstandard") from exc
+        return zstandard.ZstdDecompressor().stream_reader(open(path, "rb"), closefd=True)
+    return None
+
+
+@contextmanager
+def _demo_file(path: Path):
+    """Yield (path to a plain .dem, sha256 of the plain .dem).
+
+    Compressed demos are streamed to a temp file that is removed afterwards, even on error.
+    The hash is taken while decompressing, so the same match hashes the same however it is packed.
+    """
+    stream = _open_compressed(path)
+    if stream is None:
+        yield path, _sha256(path)
+        return
+    fd, tmp_name = tempfile.mkstemp(suffix=".dem", prefix="impactagent-")
+    tmp = Path(tmp_name)
+    try:
+        h = hashlib.sha256()
+        with stream, os.fdopen(fd, "wb") as out:
+            while b := stream.read(_CHUNK):
+                h.update(b)
+                out.write(b)
+        yield tmp, h.hexdigest()
+    finally:
+        gc.collect()  # drop demoparser2 handles so Windows lets us delete the file
+        try:
+            tmp.unlink(missing_ok=True)
+        except PermissionError:
+            gc.collect()
+            tmp.unlink(missing_ok=True)
 
 
 def _event(parser: DemoParser, name: str, player: list[str] | None = None) -> pd.DataFrame:
@@ -138,15 +192,27 @@ def _build_rounds(parser: DemoParser, tickrate: int, warnings: list[str]) -> pd.
         prev_end = end
     rounds = pd.DataFrame(rows)
     # Window used to assign events (exit frags after round_end stay in the round).
-    rounds["next_start_tick"] = rounds["start_tick"].shift(-1).fillna(np.iinfo(np.int64).max).astype("int64")
+    # Last round is open-ended. (Don't fillna(int64.max): it goes through float and overflows.)
+    rounds["next_start_tick"] = rounds["start_tick"].shift(-1, fill_value=np.iinfo(np.int64).max).astype("int64")
+    # Match end = cs_win_panel_match (fallback: last round_end). Events after it are "post-match"
+    # (e.g. world suicides while the scoreboard is up).
+    panel = _event(parser, "cs_win_panel_match")
+    last_end = int(rounds["end_tick"].iloc[-1])
+    panel_tick = int(panel["tick"].min()) if not panel.empty else -1
+    rounds.attrs["match_end_tick"] = panel_tick if panel_tick >= last_end else last_end
     return rounds
 
 
-def _assign_round(df: pd.DataFrame, rounds: pd.DataFrame) -> pd.DataFrame:
-    """Attach round_no to events; drop events outside official rounds (warmup etc.)."""
+def _assign_round(df: pd.DataFrame, rounds: pd.DataFrame, keep_post_match: bool = False) -> pd.DataFrame:
+    """Attach round_no to events; drop events outside official rounds (warmup etc.).
+
+    Post-match events are dropped unless keep_post_match, which keeps them flagged `post_match`.
+    """
     if df.empty:
         df = df.copy()
         df["round_no"] = pd.Series(dtype="int64")
+        if keep_post_match:
+            df["post_match"] = pd.Series(dtype="bool")
         return df
     df = df.sort_values("tick").copy()
     df["tick"] = df["tick"].astype("int64")
@@ -154,17 +220,28 @@ def _assign_round(df: pd.DataFrame, rounds: pd.DataFrame) -> pd.DataFrame:
     out = pd.merge_asof(df, r, left_on="tick", right_on="start_tick", direction="backward")
     out = out[out["round_no"].notna() & (out["tick"] < out["next_start_tick"])]
     out["round_no"] = out["round_no"].astype("int64")
+    post = out["tick"] > rounds.attrs["match_end_tick"]
+    if keep_post_match:
+        out["post_match"] = post
+    else:
+        out = out[~post]
     return out.drop(columns=["start_tick", "next_start_tick"])
 
 
 # --------------------------------------------------------------------------- main
 
 def parse_demo(path: str | Path) -> ParsedDemo:
+    """Parse a .dem (or .dem.bz2 / .dem.gz / .dem.zst) into event tables."""
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(path)
+    with _demo_file(path) as (dem_path, sha256):
+        return _parse(dem_path, path, sha256)
+
+
+def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
     warnings: list[str] = []
-    parser = DemoParser(str(path))
+    parser = DemoParser(str(dem_path))
     header = parser.parse_header() or {}
     map_name = header.get("map_name", "unknown")
     tickrate = DEFAULT_TICKRATE
@@ -197,7 +274,9 @@ def parse_demo(path: str | Path) -> ParsedDemo:
 
     # ---- kills
     k = _event(parser, "player_death", POS_PROPS)
-    k = _assign_round(k, rounds)
+    # Post-match deaths are kept (flagged) only because Leetify counts them in the
+    # unused-utility denominator; every other metric must filter them out.
+    k = _assign_round(k, rounds, keep_post_match=True)
     kills = pd.DataFrame(
         {
             "round_no": k["round_no"],
@@ -222,6 +301,7 @@ def parse_demo(path: str | Path) -> ParsedDemo:
     ).reset_index(drop=True)
     kills["is_team_kill"] = kills["attacker_side"].notna() & (kills["attacker_side"] == kills["victim_side"])
     kills["is_suicide"] = kills["attacker_id"].isna() | (kills["attacker_id"] == kills["victim_id"])
+    kills["post_match"] = k["post_match"].to_numpy(dtype=bool)
 
     # ---- damages
     d = _event(parser, "player_hurt", ["team_num"])
@@ -243,7 +323,11 @@ def parse_demo(path: str | Path) -> ParsedDemo:
     ).reset_index(drop=True)
     damages = damages.sort_values(["round_no", "victim_id", "tick"]).reset_index(drop=True)
     prev_hp = damages.groupby(["round_no", "victim_id"])["victim_hp_after"].shift(1).fillna(100)
-    damages["dmg_effective"] = np.minimum(damages["dmg_raw"], prev_hp).astype(int)
+    # Health actually removed: capped at remaining HP, and a killing hit takes all remaining HP
+    # (dmg_health can be 1 below it because of fractional damage).
+    damages["dmg_effective"] = np.where(
+        damages["victim_hp_after"] <= 0, prev_hp, np.minimum(damages["dmg_raw"], prev_hp)
+    ).astype(int)
     damages["is_team"] = damages["attacker_side"].notna() & (damages["attacker_side"] == damages["victim_side"])
 
     # ---- shots (velocity for counter-strafe later)
@@ -334,20 +418,27 @@ def parse_demo(path: str | Path) -> ParsedDemo:
 
     # ---- inventory at death (unused utility)
     death_ticks = sorted(kills["tick"].unique().tolist())
-    death_inventory = pd.DataFrame(columns=["tick", "steam_id", "inventory"])
+    inv_cols = ["tick", "steam_id", "inventory", "active_weapon"]
+    death_inventory = pd.DataFrame(columns=inv_cols)
     if death_ticks:
-        # inventory is read one tick before death, while the player still holds it
-        inv = pd.DataFrame(parser.parse_ticks(["inventory"], ticks=[t - 1 for t in death_ticks]))
+        # inventory is read one tick before death, while the player still holds it.
+        # A grenade thrown just before death can still be listed (and active): metrics handle that.
+        inv = pd.DataFrame(
+            parser.parse_ticks(["inventory", "active_weapon_name"], ticks=[t - 1 for t in death_ticks])
+        )
         if not inv.empty:
             inv["steam_id"] = _sid(inv["steamid"])
             inv["tick"] = inv["tick"] + 1
-            death_inventory = inv[["tick", "steam_id", "inventory"]]
+            inv["active_weapon"] = inv.get("active_weapon_name")
+            # keep only the player(s) who died at that tick
+            victims = kills[["tick", "victim_id"]].rename(columns={"victim_id": "steam_id"}).drop_duplicates()
+            death_inventory = inv.merge(victims, on=["tick", "steam_id"])[inv_cols]
 
     rounds = rounds.drop(columns=["next_start_tick"])
     grenades.attrs["detonations"] = detonations
     return ParsedDemo(
         path=path,
-        sha256=_sha256(path),
+        sha256=sha256,
         map_name=map_name,
         tickrate=tickrate,
         rounds=rounds,

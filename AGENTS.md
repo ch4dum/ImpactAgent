@@ -13,7 +13,9 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
   conda activate ImpactAgent
   pip install -e .
   ```
-- Demo files live **outside the repo** in `..\scripts\demos\` (e.g. `..\scripts\demos\dust2win.dem`, ~180 MB each). Never copy demos into the repo.
+- `conda` may not be on PATH in tool shells; call `C:\Users\tamma\miniconda3\envs\ImpactAgent\python.exe` directly.
+- Demo files (~80-330 MB each, gitignored: `*.dem`, `*.dem.bz2`, `*.dem.gz`, `*.dem.zst`) live in `scripts/demos/` (in the repo folder, ignored) and older ones in `..\scripts\demos\`. Never commit demos. `parse_demo` reads `.dem`, `.dem.bz2`, `.dem.gz` (and `.dem.zst` if `zstandard` is installed).
+- Only open the demo paired with a truth file; to identify an unknown demo, check header + `round_end` + player names only, one file at a time.
 
 ## Repo map
 | Path | What |
@@ -27,24 +29,22 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 | `impactagent/metrics/compute.py` | General + Utility metrics per player, `compute_match_metrics(parsed)` |
 | `impactagent/__main__.py` | CLI: `inspect`, `parse`, `validate` |
 | `impactagent/validate/__init__.py` | Compare our metrics with a truth JSON; aborts if demo and truth look like different matches |
-| `data/validation/dust2-f2633f5c.json` | Leetify's real values for one de_dust2 match (22 rounds, 13:9, all 10 players). **No local demo matches it yet** (`dust2win.dem`, `dust139.dem`, `dust1614.dem` were checked and are other matches); a new demo is coming. **Gitignored, never commit.** |
+| `data/validation/inferno-44a522c3.json` | **Validation pair:** Leetify's real values for `scripts/demos/003852158461294936246_0991785667.dem.bz2` (de_inferno 13:0, 13 rounds, all 10 players; utility only for our team; read its `note`). **Gitignored, never commit.** |
+| `data/validation/dust2-f2633f5c.json` | Leetify values for a de_dust2 13:9 match. **No local demo matches it** (`dust2win.dem`, `dust139.dem`, `dust1614.dem` are other matches). Don't tune anything to it. Gitignored. |
 | `data/parsed/` | Parser outputs (Parquet). Gitignored. |
 
 ## Current status (2026-11-05)
-Phase 0 (research) and data model v0.1 are done. CLI (steps 1-3 below) is done; parser and General/Utility metrics run end to end on `dust2win.dem` and demoparser2 column names are checked. **Step 4 is blocked** until we get the demo that matches the truth JSON. Don't tune the parser to `dust2-f2633f5c.json` before then.
+Phase 0 (research) and data model v0.1 are done. CLI (`inspect`, `parse`, `validate`) is done. **General + Utility match Leetify 245/245** (player × metric) on the inferno pair. Findings are in `docs/metrics/leetify-metrics-spec.md` §2, §3, §4.
+
+Validate:
+```
+python -m impactagent validate scripts/demos/003852158461294936246_0991785667.dem.bz2 --truth data/validation/inferno-44a522c3.json --only-diff
+```
 
 ### Next steps
-1. `pip install -e .` in the `ImpactAgent` env. (`conda` may not be on PATH in tool shells; call `C:\Users\tamma\miniconda3\envs\ImpactAgent\python.exe` directly.)
-2. Add a CLI (`impactagent/__main__.py`):
-   - `python -m impactagent inspect <demo>`: list game events and the columns of `player_death`, `player_hurt`, `weapon_fire`, `player_blind`, `round_end`, and `parse_ticks(["inventory"])`, so column names can be checked.
-   - `python -m impactagent parse <demo> [--out data/parsed/<stem>]`: write each table to Parquet.
-   - `python -m impactagent validate <demo> --truth data/validation/dust2-f2633f5c.json`: compare our metrics with Leetify's per player per metric, print a table with diff and % diff.
-3. Run `inspect` first and fix `parse/demo.py` to the real column names.
-4. Run `validate` and iterate until General + Utility match:
-   - Target: exact for counts (kills, deaths, assists, multi-kills, grenades thrown); within ~2-3% for ratios.
-   - Known unknowns to calibrate: trade window (`TRADE_WINDOW_SECONDS`, KAST depends on it), how Leetify counts flashes thrown, unused-utility prices (incendiary price), whether flash assists need `> 1.1s` blind.
-   - Record every finding (what Leetify actually does) back into `docs/metrics/leetify-metrics-spec.md`.
-5. Then: metric registry YAML (`impactagent/metrics/registry.yaml`, fields in data-model §4), trades (`trade_windows`), opening duels, clutches. Aim metrics need the visibility module (spec §0) and come after.
+1. Get a second validation pair (ideally a close game with saves, clutches, a bomb plant per side) and re-run `validate`; one 13:0 stomp can hide rules (e.g. the trade window is only bounded to [2.05, 4.84) s, `TRADE_WINDOW_SECONDS = 4.0` is a placeholder).
+2. Trades: opportunities / attempts (succeeded already matches with a naive 4.0s rule), opening traded %.
+3. Then: metric registry YAML (`impactagent/metrics/registry.yaml`, fields in data-model §4), trades (`trade_windows`), opening duels, clutches. Aim metrics need the visibility module (spec §0) and come after.
 
 ## Rules
 - **Commits:** the owner commits himself (GitHub Desktop). When work is ready, propose a message: **Summary ≤ 5 words**, details as bullet points in the **Description**. Don't commit or push unless asked.

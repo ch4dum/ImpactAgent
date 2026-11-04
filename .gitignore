@@ -16,6 +16,7 @@ dist/
 *.dem
 *.dem.bz2
 *.dem.zst
+*.dem.gz
 *.parquet
 data/raw/
 data/parsed/
