@@ -99,10 +99,11 @@ Premier rating · AIM (0–100) · UTILITY (0–100) · POSITIONING (0–100) ·
 - ตัวอย่าง (ch4dum, Dust2): ฝั่ง T เล่น A Long/Pit บ่อย (32%, KD 0.75 สีแดง) · ฝั่ง CT อยู่ Mid/CT 29% KD 7 (เขียวเข้ม) · CT post-plant แพ้ที่ B site (33%, KD 1 แดง)
 
 ### 2D Replay
-- หน้า paywall: ทดลองฟรีได้โดยกด "Generate Replay" (replay จะอยู่ 30 วัน)
-- จุดขาย: หาช่วงที่น่าสนใจของรอบได้เร็ว, ดูว่า utility โดนศัตรูไหม, ดูว่าศัตรู lurk มายังไง
-- UI: radar ของแมพ, ไอคอนผู้เล่น/ระเบิด/เส้นยิง, เวลาของรอบ (เช่น 1:12), ปุ่ม play, ความเร็ว x1, timeline ที่มีขีดสีบอกจังหวะ kill
-- ต้นทุนสูง ("these things cost us money") เพราะต้องเก็บตำแหน่งราย tick
+- **การเข้าถึง:** ทดลองฟรีด้วยปุ่ม "Generate Replay" (มี quota และ replay จะอยู่ 30 วัน) ใช้ต่อเกินนั้นต้อง PRO
+- **แผงซ้าย:** แยกตามทีม (TERRORISTS / COUNTER-TERRORISTS พร้อมจำนวนคนตายของรอบ) แต่ละคนมี HP · ชื่อ · เงิน ($) · K/A/D ของรอบ · ไอคอนเกราะ/หมวก · ปืนที่ถือ · C4/kit
+- **แผนที่:** radar ของแมพ, bombsite แรเงาสีแดง, จุดผู้เล่นพร้อมป้ายชื่อ (สีส้ม T / สีน้ำเงิน CT), ไอคอนระเบิด
+- **ควบคุม:** ROUND n + นาฬิกาของรอบ (1:54) · play · ความเร็ว x1 · timeline ที่มีขีดสีบอกจังหวะ kill (สีตามฝั่ง) · ปุ่มเลือกรอบ 1…N (มีไอคอนสลับฝั่งตรงครึ่งเวลา) · Round Highlight (แผงพับได้) · Hotkeys · fullscreen · ปุ่ม **"View in 3D"** (เปิดลิงก์ภายนอก)
+- **ข้อมูลที่ต้องใช้:** ตำแหน่ง/มุมของผู้เล่นราย tick (หรือสุ่มทุก ~8–16 tick), HP, เงิน, inventory, เส้นทางระเบิด จึงต้องเก็บ tick data เพิ่มจาก event model ของเรา (ต้นทุน storage สูง ไม่อยู่ใน MVP)
 
 ### Match Details → General
 Columns: Kills · Assists · Deaths · K/D · ADR · KAST · 2K · 3K · 4K · 5K · HLTV Rating · Rating · Personal Performance (แยกทีม)
