@@ -138,7 +138,7 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash
 
 ## 4. Metric Registry
 
-นิยามของ metric ทุกตัวอยู่ในไฟล์เดียว (`impactagent/metrics/registry.yaml`) ใช้ร่วมกันทั้ง parser, API, UI และ LLM coach
+นิยามของ metric ทุกตัวอยู่ในไฟล์เดียว (`impactagent/metrics/registry.yaml`) ใช้ร่วมกันทั้ง parser, API, UI และ LLM coach. `id` = ชื่อคอลัมน์ใน `compute_match_metrics()` และ key ใน truth file; ตรวจด้วย `impactagent/metrics/registry.py` (`validate-all` เรียกให้)
 
 | field | ความหมาย |
 |---|---|
@@ -227,6 +227,7 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash
 ```
 - แต่ละขั้นเป็น function แยก ทดสอบได้เดี่ยวๆ และ re-run ตั้งแต่ขั้น derive ได้โดยไม่ต้อง parse ใหม่ เมื่อสูตรเปลี่ยน
 - `parse_version` บอกว่าแมตช์ไหนต้องคำนวณใหม่
+- **Parse safety:** .dem หลังแตก ≤ 1 GiB (หยุดแตกทันทีถ้าเกิน), parse ใน child process ที่ถูก kill เมื่อเกิน 300s; ไฟล์ temp ลบทุกกรณี (`impactagent/constants.py`)
 
 ## 6. ยังไม่ตัดสินใจ
 - Visibility module: spotted mask ก่อน → raycast ทีหลัง (ดู `metrics/leetify-metrics-spec.md` ข้อ 0)

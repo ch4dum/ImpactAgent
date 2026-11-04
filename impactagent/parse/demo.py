@@ -17,7 +17,14 @@ import numpy as np
 import pandas as pd
 from demoparser2 import DemoParser
 
-from impactagent.constants import DEFAULT_TICKRATE, GRENADE_WEAPONS, SIDE_BY_TEAM_NUM, TRADE_WINDOW_SECONDS
+from impactagent.constants import (
+    DEFAULT_TICKRATE,
+    GRENADE_WEAPONS,
+    MAX_DEMO_BYTES,
+    PARSE_TIMEOUT_SECONDS,
+    SIDE_BY_TEAM_NUM,
+    TRADE_WINDOW_SECONDS,
+)
 from impactagent.parse.trades import build_trade_windows
 
 POS_PROPS = ["team_num", "last_place_name", "X", "Y", "Z"]
@@ -89,23 +96,38 @@ def _open_compressed(path: Path):
     return None
 
 
+class DemoTooLargeError(ValueError):
+    """The demo (after decompression) is bigger than the allowed maximum."""
+
+
+class ParseTimeoutError(TimeoutError):
+    """Parsing took longer than the allowed wall-clock time."""
+
+
 @contextmanager
-def _demo_file(path: Path):
+def _demo_file(path: Path, max_bytes: int | None = MAX_DEMO_BYTES):
     """Yield (path to a plain .dem, sha256 of the plain .dem).
 
     Compressed demos are streamed to a temp file that is removed afterwards, even on error.
+    Decompression stops as soon as the output passes `max_bytes` (zip-bomb guard).
     The hash is taken while decompressing, so the same match hashes the same however it is packed.
     """
     stream = _open_compressed(path)
     if stream is None:
+        if max_bytes is not None and path.stat().st_size > max_bytes:
+            raise DemoTooLargeError(f"{path.name}: {path.stat().st_size} bytes > limit {max_bytes}")
         yield path, _sha256(path)
         return
     fd, tmp_name = tempfile.mkstemp(suffix=".dem", prefix="impactagent-")
     tmp = Path(tmp_name)
     try:
         h = hashlib.sha256()
+        written = 0
         with stream, os.fdopen(fd, "wb") as out:
             while b := stream.read(_CHUNK):
+                written += len(b)
+                if max_bytes is not None and written > max_bytes:
+                    raise DemoTooLargeError(f"{path.name}: decompressed size passed limit {max_bytes} bytes")
                 h.update(b)
                 out.write(b)
         yield tmp, h.hexdigest()
@@ -256,13 +278,69 @@ def _assign_round(df: pd.DataFrame, rounds: pd.DataFrame, keep_post_match: bool 
 
 # --------------------------------------------------------------------------- main
 
-def parse_demo(path: str | Path) -> ParsedDemo:
-    """Parse a .dem (or .dem.bz2 / .dem.gz / .dem.zst) into event tables."""
+def parse_demo(
+    path: str | Path,
+    timeout: float | None = PARSE_TIMEOUT_SECONDS,
+    max_bytes: int | None = MAX_DEMO_BYTES,
+) -> ParsedDemo:
+    """Parse a .dem (or .dem.bz2 / .dem.gz / .dem.zst) into event tables.
+
+    timeout: seconds; parsing runs in a child process that is killed when it runs over
+      (raises ParseTimeoutError). None = parse in this process, no limit.
+    max_bytes: max size of the (decompressed) .dem (raises DemoTooLargeError). None = no limit.
+    The temp .dem of a compressed demo is removed in every case.
+    """
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(path)
-    with _demo_file(path) as (dem_path, sha256):
-        return _parse(dem_path, path, sha256)
+    with _demo_file(path, max_bytes) as (dem_path, sha256):
+        if not timeout:
+            return _parse(dem_path, path, sha256)
+        return _parse_in_child(dem_path, path, sha256, timeout)
+
+
+def _child_main(dem_path: str, path: str, sha256: str, out: str) -> None:
+    """Child process entry point: parse, then pickle the result (or the error) to `out`."""
+    import pickle
+    import traceback
+
+    try:
+        result = ("ok", _parse(Path(dem_path), Path(path), sha256))
+    except BaseException as exc:  # noqa: BLE001 - report everything to the parent
+        result = ("error", f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}")
+    with open(out, "wb") as f:
+        pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def _parse_in_child(dem_path: Path, path: Path, sha256: str, timeout: float) -> ParsedDemo:
+    import multiprocessing as mp
+    import pickle
+
+    fd, out_name = tempfile.mkstemp(suffix=".pkl", prefix="impactagent-")
+    os.close(fd)
+    out = Path(out_name)
+    proc = mp.get_context("spawn").Process(
+        target=_child_main, args=(str(dem_path), str(path), sha256, str(out)), daemon=True
+    )
+    try:
+        proc.start()
+        proc.join(timeout)
+        if proc.is_alive():
+            proc.kill()
+            proc.join(10)
+            raise ParseTimeoutError(f"{path.name}: parse took longer than {timeout:g}s")
+        if proc.exitcode != 0 or out.stat().st_size == 0:
+            raise RuntimeError(f"{path.name}: parser process exited with code {proc.exitcode}")
+        with open(out, "rb") as f:
+            status, payload = pickle.load(f)
+        if status != "ok":
+            raise RuntimeError(f"{path.name}: parse failed in child process: {payload}")
+        return payload
+    finally:
+        if proc.is_alive():
+            proc.kill()
+            proc.join(10)
+        out.unlink(missing_ok=True)
 
 
 def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:

@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from impactagent.metrics.registry import by_id, check_registry, ids_with_status
+
 # Metrics that must match exactly (counts). Everything else is compared as a ratio.
 COUNT_METRICS = {
     "kills", "deaths", "assists", "damage", "rounds_survived",
@@ -119,13 +121,10 @@ def check_same_match(p, ours: pd.DataFrame, truth: dict) -> list[str]:
     return problems
 
 
-# Reported but not gating: definitions are still hypotheses (spec §3 / §8).
 # Per-round event kinds that gate validate-all.
 GATING_EVENTS = {"opening", "clutch"}
-CALIBRATING_METRICS = {
-    "trade_kill_opportunities", "trade_kill_attempts",
-    "traded_death_opportunities", "traded_death_attempts",
-}
+# Reported but not gating: registry status `calibrating` (definition still a hypothesis).
+CALIBRATING_METRICS = ids_with_status("calibrating")
 
 
 def compare_events(p, ours: pd.DataFrame, truth: dict) -> pd.DataFrame:
@@ -174,6 +173,7 @@ def _run(demo: str | Path, truth: dict, metrics: list[str] | None = None):
     df["group"] = df["metric"].map(lambda m: "calibrating" if m in CALIBRATING_METRICS else "core")
     not_impl = sorted(df.loc[df["status"] == "missing", "metric"].unique())
     events = compare_events(p, ours, truth) if not metrics else pd.DataFrame()
+    _run.last_columns = set(ours.columns)  # for the registry check in validate_all
     return problems, df[df["status"] != "missing"], not_impl, events
 
 
@@ -190,6 +190,8 @@ def validate_all(truth_dir: str | Path = "data/validation", metrics: list[str] |
     """Validate every truth JSON whose "demo" exists. Exit 1 only if a core metric or a
     per-round event is off; calibrating metrics are reported, not gating."""
     failed = False
+    columns: set[str] | None = None
+    tested_ok: set[str] = set()
     for path in sorted(Path(truth_dir).glob("*.json")):
         truth = json.loads(path.read_text(encoding="utf-8"))
         demo = Path(truth.get("demo") or "")
@@ -216,6 +218,24 @@ def validate_all(truth_dir: str | Path = "data/validation", metrics: list[str] |
         if not ev_off.empty:
             _print_df(ev_off.assign(gating=ev_off["kind"].isin(GATING_EVENTS)))
         failed |= (not off.empty) or bool(len(ev_off) and ev_off["kind"].isin(GATING_EVENTS).any())
+        columns = _run.last_columns
+        tested_ok |= set(core.loc[core["status"] == "ok", "metric"])
+
+    # Registry: well-formed, every id is computed, and which exact ids no truth file checks.
+    reg = by_id()
+    problems = check_registry(columns)
+    print(f"registry.yaml                {len(reg)} metrics "
+          f"({len(ids_with_status('exact'))} exact, {len(ids_with_status('calibrating'))} calibrating)"
+          + (" | OK" if not problems else f" | {len(problems)} PROBLEMS"))
+    for msg in problems:
+        print("   -", msg)
+    unchecked = sorted(m for m in ids_with_status("exact") if m not in tested_ok)
+    if unchecked:
+        print(f"   exact but not a truth-file metric (checked indirectly: per-round events / as a numerator): {', '.join(unchecked)}")
+    missing = sorted(m for m in tested_ok if m not in reg)
+    if missing:
+        print(f"   validated but not in registry: {', '.join(missing)}")
+    failed |= bool(problems)
     return 1 if failed else 0
 
 

@@ -10,13 +10,14 @@
 - **Phase 0 Research:** metric spec, parameter reference, Leetify sitemap (`docs/metrics/`, `docs/research/`)
 - **Data model v0.1** (`docs/design/data-model.md`)
 - **Parser + CLI:** `.dem` / `.dem.bz2` / `.dem.gz` (`.dem.zst` ถ้ามี zstandard), `inspect` · `parse` · `validate` · `validate-all`, guard กันจับคู่ demo ผิดแมตช์
+- **Parse safety:** จำกัดขนาด .dem หลังแตก ≤ 1 GiB (หยุดแตกทันที ลบ temp) + timeout 300s (parse ใน child process ที่ถูก kill เมื่อเกินเวลา)
 - **General + Utility ตรงกับ Leetify:** Inferno 245/245, Mirage 290/290 (holdout ได้ 274/290 ก่อนแก้โค้ด) สถานะของแต่ละกฎอยู่ใน spec §8
 - **Trades (succeeded) + opening traded % + opening duels + clutches:** core รวม Inferno 275/275, Mirage 320/320; opening 37/37 รอบ; clutch 43/43 (รวมเคสออกเกม, spec §8)
 
 ## ⏳ Phase 1: Metrics engine (ครบหนึ่งแมตช์)
 - [x] Trades: `trade_windows`, succeeded, opening traded %, clutches
 - [ ] Trade opportunities / attempts: ตอนนี้เป็นสมมติฐาน (ตรง ~60%) → calibrate ใหม่หลังมี visibility
-- [ ] Metric registry (`impactagent/metrics/registry.yaml`)
+- [x] Metric registry (`impactagent/metrics/registry.yaml`): 43 metric (39 exact, 4 calibrating); `validate-all` เช็คว่า registry ครบ/ถูก format และ calibrating ไม่ gate
 - [ ] Head Accuracy (ไม่ต้องใช้ visibility)
 - [ ] Engagements + visibility v0 (`spotted`) → Aim: spotted accuracy, TTD, crosshair, counter-strafe, spray, TTK, first bullet
 - [ ] Visibility v1 (raycast กับ map geometry) ทำเฉพาะถ้า v0 คลาดจาก Leetify มาก
@@ -63,4 +64,5 @@
 | Buy type thresholds | ยังไม่ตัดสินใจ (Leetify ไม่เปิดเผย) |
 | Visibility | เริ่มที่ `spotted` แล้วค่อยดูว่าต้อง raycast ไหม (`approximate_spotted_by` ให้ trade opportunity ตรงแค่ ~60%) |
 | Trade window | 4.0s (ช่วงที่ข้อมูลยอมรับ [3.48, 4.47) s) |
-| validate gating | gate core metric + opening duels + clutches; trade opp/att เป็น `calibrating` (รายงานแต่ไม่ fail) |
+| validate gating | gate core metric + opening duels + clutches; metric ที่ registry ตั้ง `status: calibrating` (ตอนนี้ trade opp/att) รายงานแต่ไม่ fail |
+| Parse limits | .dem หลังแตก ≤ 1 GiB (`MAX_DEMO_BYTES`), parse ≤ 300s (`PARSE_TIMEOUT_SECONDS`); เวลาแตกไฟล์ไม่นับใน timeout (คุมด้วยขนาดแทน) |

@@ -51,6 +51,13 @@ MIN_BLIND_SECONDS = 1.1
 # (succeeded) on inferno-44a522c3 + mirage-65db631a bound it to [3.48, 4.47) s; 4.0 is inside.
 TRADE_WINDOW_SECONDS = 4.0
 
+# ---- parse safety (user uploads)
+# Max size of a demo after decompression (and of a plain .dem). Real demos are 80-330 MB.
+MAX_DEMO_BYTES = 1 << 30  # 1 GiB
+# Wall-clock limit for parsing one demo (runs in a child process that is killed on timeout).
+# A 180 MB demo takes ~10-15 s.
+PARSE_TIMEOUT_SECONDS = 300
+
 # Trade attempt = damaged the killer, or fired while the killer was spotted and the crosshair
 # was within this angle of him. HYPOTHESIS (best of a grid search on 2 matches, spec §3).
 TRADE_ATTEMPT_AIM_DEG = 20.0

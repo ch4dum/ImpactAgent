@@ -1,0 +1,544 @@
+# Metric registry (docs/design/data-model.md §4). One entry per FINISHED metric.
+# id = column of compute_match_metrics() and key in data/validation truth files.
+# label = our own display name (not Leetify's names).
+# status: exact (matches Leetify on every validation pair) · calibrating (definition is a
+#   hypothesis; reported by validate but not gating) · custom (our own metric, no reference).
+# Rule-by-rule evidence: docs/metrics/leetify-metrics-spec.md §8.
+# scopes: only `all` is computed so far (CT / T splits come later).
+
+# ------------------------------------------------------------------ general
+- id: kills
+  label: Kills
+  category: general
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  source: kills WHERE NOT is_team_kill AND NOT is_suicide AND NOT post_match
+  scopes: [all]
+  coach_hint: Number of enemies killed.
+  ref: docs/metrics/leetify-metrics-spec.md#4-general-
+  status: exact
+
+- id: deaths
+  label: Deaths
+  category: general
+  unit: count
+  format: "0"
+  direction: lower_better
+  aggregation: sum
+  source: kills.victim_id, every death incl. team kills / suicides / leaving the server, NOT post_match
+  scopes: [all]
+  coach_hint: Times you died. Dying early without a trade costs your team the most.
+  ref: docs/metrics/leetify-metrics-spec.md#4-general-
+  status: exact
+
+- id: assists
+  label: Assists
+  category: general
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  source: kills.assister_id on every death (team kills too) when the assister is an enemy of the victim; flash assists excluded
+  scopes: [all]
+  coach_hint: Damage that helped a teammate get the kill.
+  ref: docs/metrics/leetify-metrics-spec.md#4-general-
+  status: exact
+
+- id: kd
+  label: Kill / Death Ratio
+  category: general
+  unit: ratio
+  format: "0.00"
+  direction: higher_better
+  aggregation: ratio
+  numerator: kills
+  denominator: deaths
+  source: kills
+  scopes: [all]
+  status: exact
+
+- id: damage
+  label: Total Damage
+  category: general
+  unit: hp
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  source: damages.dmg_effective to enemies (capped at HP left; killing tick = all HP left)
+  scopes: [all]
+  status: exact
+
+- id: adr
+  label: Damage per Round
+  category: general
+  unit: hp
+  format: "0"
+  direction: higher_better
+  aggregation: ratio
+  numerator: sum of effective damage to enemies
+  denominator: rounds played
+  source: player_rounds.damage
+  scopes: [all]
+  coach_hint: Average health removed from enemies per round; steady impact even without kills.
+  ref: docs/metrics/leetify-metrics-spec.md#4-general-
+  status: exact
+
+- id: kast
+  label: Round Contribution (KAST)
+  category: general
+  unit: pct
+  format: "0%"
+  direction: higher_better
+  aggregation: ratio
+  numerator: rounds with a kill, an assist or flash assist, survival, or a traded death (4.0 s)
+  denominator: rounds played
+  source: player_rounds.kast
+  scopes: [all]
+  coach_hint: Share of rounds where you did something useful. Low values often mean dying first without a trade.
+  ref: docs/metrics/leetify-metrics-spec.md#4-general-
+  status: exact
+
+- id: hs_kill_pct
+  label: Headshot Kill %
+  category: general
+  unit: pct
+  format: "0%"
+  direction: higher_better
+  aggregation: ratio
+  numerator: headshot kills
+  denominator: kills
+  source: kills.headshot
+  scopes: [all]
+  status: exact
+
+- id: rounds_survived
+  label: Rounds Survived
+  category: general
+  unit: count
+  format: "0"
+  direction: neutral
+  aggregation: sum
+  source: player_rounds.survived
+  scopes: [all]
+  status: exact
+
+- id: multi2k
+  label: 2-Kill Rounds
+  category: general
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  source: player_rounds.kills == 2
+  scopes: [all]
+  status: exact
+
+- id: multi3k
+  label: 3-Kill Rounds
+  category: general
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  source: player_rounds.kills == 3
+  scopes: [all]
+  status: exact
+
+- id: multi4k
+  label: 4-Kill Rounds
+  category: general
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  source: player_rounds.kills == 4
+  scopes: [all]
+  status: exact
+
+- id: multi5k
+  label: Aces
+  category: general
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  source: player_rounds.kills == 5
+  scopes: [all]
+  status: exact
+
+- id: hltv_rating
+  label: Classic Rating 1.0
+  category: rating
+  unit: rating
+  format: "0.00"
+  direction: higher_better
+  aggregation: mean
+  numerator: recompute from summed kills, deaths, multi-kills and rounds (public 1.0 formula); do not average per-match values
+  source: player_rounds
+  scopes: [all]
+  status: exact
+
+- id: opening_attempt_pct
+  label: Opening Duel Rate
+  category: general
+  unit: pct
+  format: "0%"
+  direction: neutral
+  aggregation: ratio
+  numerator: rounds where you got or gave the first kill (no team kill / suicide)
+  denominator: rounds in the match (not rounds played)
+  source: kills (first per round)
+  scopes: [all]
+  status: exact
+
+- id: opening_success_pct
+  label: Opening Duel Win %
+  category: general
+  unit: pct
+  format: "0%"
+  direction: higher_better
+  aggregation: ratio
+  numerator: opening duels won
+  denominator: opening duels taken
+  source: kills (first per round)
+  scopes: [all]
+  coach_hint: How often you win the first fight of the round.
+  status: exact
+
+- id: opening_traded_pct
+  label: Opening Death Traded %
+  category: positioning
+  unit: pct
+  format: "0%"
+  direction: higher_better
+  aggregation: ratio
+  numerator: opening deaths traded by a teammate within 4.0 s
+  denominator: opening deaths
+  source: kills (first per round), trade_windows.succeeded
+  scopes: [all]
+  coach_hint: When you die first, does a teammate trade you? Low values mean you entry alone.
+  ref: docs/metrics/leetify-metrics-spec.md#3-trades
+  status: exact
+
+# ------------------------------------------------------------------ clutches
+- id: clutches
+  label: Clutches
+  category: general
+  unit: count
+  format: "0"
+  direction: neutral
+  aggregation: sum
+  source: clutches (last player alive on the side vs >= 1 enemy)
+  scopes: [all]
+  ref: docs/metrics/leetify-metrics-spec.md#8
+  status: exact
+
+- id: clutches_won
+  label: Clutches Won
+  category: general
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  source: clutches.outcome == won
+  scopes: [all]
+  status: exact
+
+- id: clutches_lost
+  label: Clutches Lost
+  category: general
+  unit: count
+  format: "0"
+  direction: lower_better
+  aggregation: sum
+  source: clutches.outcome == lost (died; leaving the server is not dying)
+  scopes: [all]
+  status: exact
+
+- id: clutches_saved
+  label: Clutches Saved
+  category: general
+  unit: count
+  format: "0"
+  direction: neutral
+  aggregation: sum
+  source: clutches.outcome == saved (round lost, player alive)
+  scopes: [all]
+  status: exact
+
+- id: clutch_kills
+  label: Clutch Kills
+  category: general
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  source: clutches.kills (enemy kills after the clutch starts + enemy world deaths you assisted)
+  scopes: [all]
+  status: exact
+
+# ------------------------------------------------------------------ trades
+- id: trade_kills_succeed
+  label: Trade Kills
+  category: positioning
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  numerator: trade_windows.succeeded per teammate (killed the killer within 4.0 s)
+  source: trade_windows
+  scopes: [all]
+  ref: docs/metrics/leetify-metrics-spec.md#3-trades
+  status: exact
+
+- id: traded_deaths_succeed
+  label: Deaths Traded
+  category: positioning
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  numerator: deaths where a teammate killed the killer within 4.0 s
+  source: trade_windows
+  scopes: [all]
+  ref: docs/metrics/leetify-metrics-spec.md#3-trades
+  status: exact
+
+- id: trade_kill_opportunities
+  label: Trade Kill Chances
+  category: positioning
+  unit: count
+  format: "0"
+  direction: neutral
+  aggregation: sum
+  numerator: trade_windows.had_opportunity per teammate (attempted, or teammate and killer spotted each other)
+  source: trade_windows
+  scopes: [all]
+  ref: docs/metrics/leetify-metrics-spec.md#3-trades
+  status: calibrating
+
+- id: trade_kill_attempts
+  label: Trade Kill Attempts
+  category: positioning
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  numerator: trade_windows.attempted per teammate (damaged the killer, or fired with the killer spotted within 20°)
+  source: trade_windows
+  scopes: [all]
+  ref: docs/metrics/leetify-metrics-spec.md#3-trades
+  status: calibrating
+
+- id: traded_death_opportunities
+  label: Traded Death Chances
+  category: positioning
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  numerator: deaths where >= 1 teammate had a trade opportunity
+  source: trade_windows
+  scopes: [all]
+  ref: docs/metrics/leetify-metrics-spec.md#3-trades
+  status: calibrating
+
+- id: traded_death_attempts
+  label: Traded Death Attempts
+  category: positioning
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  numerator: deaths where >= 1 teammate attempted a trade
+  source: trade_windows
+  scopes: [all]
+  ref: docs/metrics/leetify-metrics-spec.md#3-trades
+  status: calibrating
+
+# ------------------------------------------------------------------ utility
+- id: flash_thrown
+  label: Flashbangs Thrown
+  category: utility
+  unit: count
+  format: "0"
+  direction: neutral
+  aggregation: sum
+  source: grenades.type == flash
+  scopes: [all]
+  status: exact
+
+- id: smoke_thrown
+  label: Smokes Thrown
+  category: utility
+  unit: count
+  format: "0"
+  direction: neutral
+  aggregation: sum
+  source: grenades.type == smoke
+  scopes: [all]
+  status: exact
+
+- id: he_thrown
+  label: HE Grenades Thrown
+  category: utility
+  unit: count
+  format: "0"
+  direction: neutral
+  aggregation: sum
+  source: grenades.type == he
+  scopes: [all]
+  status: exact
+
+- id: molotov_thrown
+  label: Fire Grenades Thrown
+  category: utility
+  unit: count
+  format: "0"
+  direction: neutral
+  aggregation: sum
+  source: grenades.type == molotov (molotov + incendiary)
+  scopes: [all]
+  status: exact
+
+- id: enemies_flashed
+  label: Enemies Blinded
+  category: utility
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  source: blinds on live enemies with duration > 1.1 s
+  scopes: [all]
+  status: exact
+
+- id: enemies_flashed_per_flash
+  label: Enemies Blinded per Flash
+  category: utility
+  unit: ratio
+  format: "0.00"
+  direction: higher_better
+  aggregation: ratio
+  numerator: blinds on live enemies with duration > 1.1 s
+  denominator: flashbangs thrown
+  source: blinds, grenades
+  scopes: [all]
+  coach_hint: How many enemies each flash blinds for long enough to matter.
+  ref: docs/metrics/leetify-metrics-spec.md#2-utility
+  status: exact
+
+- id: friends_flashed_per_flash
+  label: Teammates Blinded per Flash
+  category: utility
+  unit: ratio
+  format: "0.00"
+  direction: lower_better
+  aggregation: ratio
+  numerator: blinds on live teammates or yourself with duration > 1.1 s
+  denominator: flashbangs thrown
+  source: blinds, grenades
+  scopes: [all]
+  coach_hint: Flashes that blind your own side. Throw from cover or call it out.
+  status: exact
+
+- id: flash_blind_duration_avg
+  label: Average Blind Time
+  category: utility
+  unit: s
+  format: "0.0"
+  direction: higher_better
+  aggregation: ratio
+  numerator: sum over flashes of the longest blind on a live enemy (any duration)
+  denominator: flashes that blinded >= 1 live enemy
+  source: blinds
+  scopes: [all]
+  status: exact
+
+- id: flash_assist_pct
+  label: Flash-to-Kill Rate
+  category: utility
+  unit: pct
+  format: "0%"
+  direction: higher_better
+  aggregation: ratio
+  numerator: kills on enemies still blind from your flash (by anyone on your side, you included; per kill)
+  denominator: flashbangs thrown
+  source: blinds, kills, grenades
+  scopes: [all]
+  coach_hint: Share of your flashes that set up a kill. Pop-flash for a teammate who is ready to peek.
+  status: exact
+
+- id: flashes_leading_to_kill
+  label: Kills off Your Flashes
+  category: utility
+  unit: count
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  source: kills on enemies still blind from your flash (numerator of flash_assist_pct)
+  scopes: [all]
+  status: exact
+
+- id: he_damage_enemies
+  label: HE Damage
+  category: utility
+  unit: hp
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  source: damages.dmg_raw, weapon hegrenade, to enemies (not capped at HP left)
+  scopes: [all]
+  status: exact
+
+- id: he_damage_per_he
+  label: HE Damage per Grenade
+  category: utility
+  unit: hp
+  format: "0.0"
+  direction: higher_better
+  aggregation: ratio
+  numerator: raw HE damage to enemies
+  denominator: HE grenades thrown
+  source: damages, grenades
+  scopes: [all]
+  status: exact
+
+- id: he_team_damage_per_he
+  label: HE Team Damage per Grenade
+  category: utility
+  unit: hp
+  format: "0.0"
+  direction: lower_better
+  aggregation: ratio
+  numerator: HE damage to teammates and yourself
+  denominator: HE grenades thrown
+  source: damages, grenades
+  scopes: [all]
+  status: exact
+
+- id: molotov_damage_enemies
+  label: Fire Damage
+  category: utility
+  unit: hp
+  format: "0"
+  direction: higher_better
+  aggregation: sum
+  source: damages.dmg_effective, weapon inferno / molotov / incgrenade, to enemies
+  scopes: [all]
+  status: exact
+
+- id: unused_utility_on_death_avg
+  label: Utility Value Lost on Death
+  category: utility
+  unit: usd
+  format: "$0"
+  direction: lower_better
+  aggregation: ratio
+  numerator: $ of grenade types held at death (each type once; a grenade thrown <= 1 s before death not counted)
+  denominator: deaths incl. post-match ones
+  source: death_inventory, kills, grenades
+  scopes: [all]
+  coach_hint: Money in grenades you died with. Use utility before taking a fight you might lose.
+  status: exact
