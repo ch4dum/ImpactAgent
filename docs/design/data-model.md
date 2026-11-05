@@ -62,11 +62,11 @@
 | survived, was_traded | bool |
 | kast | bool (K or A or S or T) |
 | unused_utility_value | มูลค่าระเบิดที่ถือตอนตาย (null ถ้ารอด) |
-| rating | Impact rating ของรอบ (เฟสหลัง) |
+| rating | Impact ของรอบ = Σ `rating_events.delta` ของผู้เล่น (fraction, ไม่รวม time/disconnect) ตอนนี้อยู่ใน `player_round_ratings.parquet` |
 
 ### 2.3 Event level (Parquet)
 **`kills`** (เก็บใน Postgres ด้วย เพราะใช้บ่อย)
-match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash_assister_id, weapon, headshot, wallbang, through_smoke, noscope, attacker_blind, attacker_side, victim_side, is_team_kill, **attacker_xyz, victim_xyz, attacker_place, victim_place**, is_opening, **traded_by_kill_tick** (nullable), is_trade_kill, **post_match** (death หลัง `cs_win_panel_match` เช่น world suicide ตอนขึ้น scoreboard: ทุก metric ต้องกรองทิ้ง ยกเว้นตัวหารของ unused utility), **by_disconnect** (suicide/world ที่ tick เดียวกับ `player_disconnect` ของคนตาย: ยังนับเป็น death ใน General แต่ clutch outcome ไม่นับว่าตาย)
+match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, **flash_assist** (bool: ตอนเป็น True `assister_id` คือคน flash; ยังไม่มีคอลัมน์ `flash_assister_id`), weapon, headshot, wallbang, through_smoke, noscope, attacker_blind, attacker_side, victim_side, is_team_kill, **attacker_xyz, victim_xyz, attacker_place, victim_place**, is_suicide (attacker null หรือ = victim), is_opening / traded_by_kill_tick / is_trade_kill (**ยังไม่เป็นคอลัมน์**: opening คิดใน `general_metrics`, trade จาก `trade_windows`), **post_match** (death หลัง `cs_win_panel_match` เช่น world suicide ตอนขึ้น scoreboard: ทุก metric ต้องกรองทิ้ง ยกเว้นตัวหารของ unused utility), **by_disconnect** (suicide/world ที่ tick เดียวกับ `player_disconnect` ของคนตาย: ยังนับเป็น death ใน General แต่ clutch outcome ไม่นับว่าตาย)
 
 **`damages`**: match_id, round_no, tick, attacker_id, victim_id, weapon, hitgroup, dmg_raw, **dmg_effective** (HP ที่หายจริง: cap ที่ HP ที่เหลือ และทุก hit ใน tick ที่ฆ่ารวมกัน = HP ที่เหลือก่อน tick นั้น; HE damage ใน metric utility ใช้ dmg_raw), dmg_armor, victim_hp_after, is_team, attacker_side, victim_side, **attacker_place, victim_place, attacker_xyz, victim_xyz**
 
@@ -104,7 +104,22 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash
 
 **`clutches`**: match_id, round_no, steam_id, side, vs_n, start_tick, kills, outcome (`won`/`lost`/`saved`) (derive จาก kills + player_rounds_side + rounds ไม่ต้อง parse ใหม่)
 
-**`rating_events`**: match_id, round_no, tick, steam_id, category (`mid_round_kd` · `opening_duel` · `retake` · `clutch` · `damage_assist` · `traded` · `flash_assist` · `afterplant` · `enemy_saving`), delta (ใช้ทำ Rating Breakdown)
+**`rating_events`** (impact-spec §3, Parquet `data/parsed/<demo>/rating_events.parquet`, ใช้ทำ Rating Breakdown): 1 แถวต่อ (state, part, ผู้รับ)
+| column | dtype | หมายเหตุ |
+|---|---|---|
+| match_id | string | |
+| round_no, seq, sub | int64, int32, int8 | seq = ลำดับ state ในรอบ (wp_states), sub = ลำดับ kill ใน tick เดียวกัน |
+| tick | int64 | |
+| event_type, event_ref | string | `kill` · `plant` · `defuse` · `explode` · `round_end` (ref จาก wp_states) |
+| part | string | `kill` · `damage` · `flash_assist` · `traded_death` · `death` · `opponent_split` · `plant` · `defuse` · `explode` · `round_end` · `time` · `disconnect` |
+| steam_id | string, nullable | null = `time` / `disconnect` / bot |
+| is_bot | bool | |
+| side | string | `T`/`CT` (แถว time/disconnect มาเป็นคู่ T +D / CT −D) |
+| category | string | `opening_duel` · `mid_round_kd` · `clutch` · `afterplant` · `retake` · `damage_assist` · `flash_assist` · `traded` · `enemy_saving` · `time` · `disconnect` |
+| delta | float64 | **fraction** ของการชนะรอบ มุมมองฝั่งของแถว (×100 ทำที่ `impact_metrics` เท่านั้น) |
+| wp_pre, wp_after | float64 | WP ของ T ก่อน/หลัง event (debug + invariant) |
+
+Key: (match_id, round_no, seq, sub, part, side, steam_id). `player_round_ratings.parquet` (match_id, round_no, steam_id, side, rating) = `player_rounds.rating`
 
 ### 2.5 Metric values
 **`metric_values`** (long format, 1 แถวต่อ metric ต่อผู้เล่นต่อ scope)

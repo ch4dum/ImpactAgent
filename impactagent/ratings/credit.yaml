@@ -1,0 +1,9 @@
+# Impact credit config (impact-spec §3.2). Shares of a kill's ΔWP on the killer's side.
+# A part with no receiver is dropped and the others are scaled up to sum to 1.
+kill_split:
+  kill: 0.35          # attacker
+  damage: 0.30        # killer's team (attacker included) by sequential damage to the victim
+  flash_assist: 0.15  # flash assister (enemy of the victim)
+  traded_death: 0.20  # teammate(s) whose death this kill traded
+# Several kills in one tick share one wp_states row: split its ΔWP equally per kill.
+multi_kill_same_tick: equal_split

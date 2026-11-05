@@ -373,5 +373,9 @@ def compute_match_metrics(p: ParsedDemo) -> pd.DataFrame:
     clutch = clutch_metrics(p, build_clutches(replace(p, kills=all_kills)))
     aim = aim_metrics(p)
     rws = rws_metrics(p)
+    from impactagent.ratings.credit import impact_metrics  # lazy: credit imports this module
+
+    # Impact gets the post_match-filtered p plus all kills for its clutch categories.
+    impact = impact_metrics(replace(p, kills=all_kills))
     names = p.players.set_index("steam_id")[["name", "team"]]
-    return names.join(gen).join(util).join(trades).join(clutch).join(aim).join(rws)
+    return names.join(gen).join(util).join(trades).join(clutch).join(aim).join(rws).join(impact)

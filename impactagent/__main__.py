@@ -115,6 +115,13 @@ def _cmd_train_wp(args: argparse.Namespace) -> int:
     return run_train_wp(args.states, args.out, args.set, faceit_states, f"team_{args.faceit_member}")
 
 
+def _cmd_impact(args: argparse.Namespace) -> int:
+    from impactagent.ratings.impact_report import run_impact
+
+    out = args.out or f"data/parsed/{_demo_stem(Path(args.demo))}"
+    return run_impact(args.demo, out, args.faceit, args.breakdown)
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):  # Windows consoles + non-ASCII player names
         try:
@@ -174,6 +181,13 @@ def main(argv: list[str] | None = None) -> int:
     tw.add_argument("--faceit-states", default="data/parsed/wp_states_faceit.parquet")
     tw.add_argument("--faceit-member", default="haineieie")
     tw.set_defaults(func=_cmd_train_wp)
+
+    im = sub.add_parser("impact", help="Impact credit -> rating_events (impact-spec §3)")
+    im.add_argument("demo", type=Path)
+    im.add_argument("--out", help="folder for rating_events / player_round_ratings Parquet")
+    im.add_argument("--faceit", type=Path, help="FACEIT scoreboard JSON: compare with Swing")
+    im.add_argument("--breakdown", action="store_true", help="per-category table")
+    im.set_defaults(func=_cmd_impact)
 
     args = ap.parse_args(argv)
     return args.func(args)

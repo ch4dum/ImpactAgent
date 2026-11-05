@@ -74,35 +74,62 @@ Rating รวม (แบบ 1.70 ของ FACEIT) ยังไม่ทำ จ�
 - เทียบ WP เริ่มรอบเฉลี่ยกับที่ย้อนคำนวณจาก FACEIT (§1)
 
 ## 3. Impact credit
-### 3.1 ΔWP ของ event
-- `delta = wp_after(event) − wp_after(previous event)` (ใช้ wp หลัง event ก่อนหน้า ไม่ปรับตามเวลาที่ผ่านไป → การเปลี่ยนจากเวลาไหลจะรวมไปอยู่ใน event ถัดไป ทำให้ Σ ทุก event ในรอบ = ผลจริง − WP เริ่มรอบ เสมอ)
-- event สุดท้าย = round end: `delta = outcome − wp_after(last event)`
-- มุมมองฝั่ง: ฝั่งที่ได้ประโยชน์ได้ `+|delta|`, ฝั่งตรงข้ามเสีย `−|delta|` (zero-sum)
+โค้ด: `impactagent/ratings/credit.py` (+ `credit.yaml`), CLI `python -m impactagent impact DEMO [--faceit JSON] [--breakdown]` (รายงานใน `impact_report.py`)
+
+### 3.1 ΔWP ของ event (แยกส่วนเวลาออก, owner 2026-11-05)
+ใช้แถวของ `build_wp_states(p)` เป็นลำดับ state ของรอบ: freeze_end → e1 … en → round_end; `wp_start` = WP ของ freeze_end
+- `wp_pre(e)` = WP ของ state ก่อนหน้า แต่เลื่อนนาฬิกาไปที่ tick ของ e (`time_left_s` ก่อนหน้า − Δtick/tickrate; `ct_can_defuse` คิดใหม่จากเวลา) · `equip_diff_k` ใช้ของ state ก่อนหน้า · state ก่อนหน้าที่ตัดสินแล้วใช้ rule-fixed
+- `delta_time = wp_pre(e) − wp_after(e ก่อนหน้า)` → แถว part/category `time`, steam_id = null (คู่ T +Dt / CT −Dt) ไม่ให้ผู้เล่นคนไหน
+- `delta_event = wp_after(e) − wp_pre(e)` → แบ่งตาม §3.2
+- round end: `delta = outcome − wp_after(event สุดท้าย)` (ไม่มีส่วนเวลาแยก)
+- เหตุผล: model มี `ct_can_defuse` ทำให้ WP กระโดด (เช่น 59% → 91%) ตอน C4 ข้าม 10s ถ้าไม่แยก คน kill ถัดไปจะได้เครดิตของเวลาไปด้วย
+- หลัง defuse / explode ทุก state ที่ตามมาในรอบ (เช่น kill หลังระเบิด) ใช้ WP ที่ตัดสินแล้ว (ไม่กลับไปใช้ค่า model)
+- ใช้ D แบบมีเครื่องหมาย (มุมมอง T): แถวฝั่ง T รวมกันได้ +D แถวฝั่ง CT ได้ −D ไม่ใช้ |D| (kill อาจทำให้ WP ฝั่งคนฆ่าลดนิดหน่อยได้จาก equip / alive_prod)
+- หลาย kill ใน tick เดียว (wp_states รวมเป็น 1 state): แบ่ง delta_event เท่ากันต่อ kill (`multi_kill_same_tick: equal_split`)
+- **หน่วย:** `rating_events.delta` เป็น fraction ของการชนะรอบ (0–1) · ×100 ทำจุดเดียวคือ `credit.PCT` ใน `impact_metrics` และตารางของ CLI
 
 ### 3.2 การแบ่งเครดิต (config `impactagent/ratings/credit.yaml`)
-**Kill** (ฝั่งคนฆ่าได้ D):
-| ส่วน | สัดส่วนตั้งต้น | ใครได้ |
+**Kill** (D ในมุมมองฝั่งคนฆ่า):
+| part | สัดส่วนตั้งต้น | ใครได้ |
 |---|---|---|
-| kill | 0.35 | attacker |
-| damage | 0.30 | เพื่อนร่วมทีมของ attacker (รวม attacker) ตามสัดส่วน `dmg_effective` ใส่เหยื่อในรอบนั้นก่อน kill tick (ไม่นับ team damage) |
-| flash_assist | 0.15 | `flash_assister_id` ของ kill |
-| traded_death | 0.20 | ถ้า kill นี้เป็น trade kill: คนที่ตายแล้วถูกเทรดคืน |
+| `kill` | 0.35 | attacker |
+| `damage` | 0.30 | ทีมของ attacker (รวม attacker) ตามสัดส่วน damage **แบบ sequential** (`rws._sequential_enemy_damage`: cap ตาม HP ที่เหลือตามลำดับ hit) ใส่เหยื่อในรอบนั้น ณ tick ≤ kill tick ไม่นับ team damage |
+| `flash_assist` | 0.15 | `assister_id` ของ kill ที่ `flash_assist = True` ถ้าอยู่ฝั่งเดียวกับ attacker (กฎเดียวกับ `_assists`) |
+| `traded_death` | 0.20 | เพื่อนที่ถูกเหยื่อคนนี้ฆ่า แล้ว kill นี้เทรดคืน: `trade_windows` succeeded, teammate = attacker, killer = victim, 0 < tick − death_tick ≤ 4s (หลายคนแบ่งเท่ากัน; ต้อง parse เต็ม ไม่ใช่ fast) |
 - ส่วนที่ไม่มีคนได้ → scale ส่วนที่เหลือให้รวม = 1 (เช่น มีแค่ kill + damage → 0.538 / 0.462)
-- **ฝั่งคนตาย:** victim เสีย D เต็ม
-- team kill / suicide / world: victim เสีย D, ฝั่งตรงข้ามที่ยังรอดได้ D แบ่งเท่ากัน
-**Plant:** planter ได้ D ทั้งหมด · **Defuse:** defuser ได้ D ทั้งหมด (ฝั่งตรงข้ามที่ยังรอดเสียแบ่งเท่ากัน) · **Explode:** planter ได้ D
-**Round end** (ระเบิด/กู้/หมดเวลา/ฆ่าหมดแล้วยังมี delta เหลือ): คนรอดฝั่งชนะได้แบ่งเท่ากัน, คนรอดฝั่งแพ้เสียแบ่งเท่ากัน (ถ้าฝั่งไหนไม่มีคนรอด ให้ผู้เล่นทั้งทีมฝั่งนั้นแบ่ง)
+- **ฝั่งคนตาย:** victim เสีย D เต็ม (part `death`)
+- team kill / suicide / world (รวม attacker เป็น null): victim เสีย D, ฝั่งตรงข้ามที่ยังรอดได้ D แบ่งเท่ากัน (part `opponent_split`)
+- **disconnect** (`by_disconnect`): ไม่ให้ใคร → คู่แถว steam_id null, part/category `disconnect` (นับใน invariant เหมือน time) Impact วัดการเล่น เน็ตหลุดไม่ควรโดนหัก
+- **Plant / Explode:** planter (explode = planter คนแรกของรอบ) ได้ D ทั้งหมด, CT ที่รอดเสียแบ่งเท่ากัน · **Defuse:** defuser ได้ D ทั้งหมด, T ที่รอดเสียแบ่งเท่ากัน (ถ้าไม่มีคนรอด ทั้งทีมแบ่ง; ส่วนฝั่งที่เสียของ plant/explode เพิ่มตอน implement เพื่อให้ zero-sum)
+- **Round end** (delta ที่เหลือ เช่น หมดเวลา): คนรอดฝั่งชนะได้แบ่งเท่ากัน, คนรอดฝั่งแพ้เสียแบ่งเท่ากัน (ฝั่งไหนไม่มีคนรอด ให้ทั้งทีมฝั่งนั้นแบ่ง)
+- **bot:** steam_id null ใน kills → แถวของ bot steam_id null + `is_bot`; attacker ที่เป็น null ถูกนับเป็น suicide/world อยู่แล้ว · ใน `data/parsed/wp_states.parquet` (30 แมตช์ train) มีเหยื่อ id null **0 ครั้ง** (2026-11-05) และ validation 4 แมตช์ 0 แถว bot
+- kill หลัง round end / ก่อน freeze end / post_match: ไม่มีแถว (wp_states ใช้เฉพาะ [freeze_end, end])
+
+**Category** (คิดตามเจ้าของแถว ณ tick นั้น; แถว `kill` / `death` / `opponent_split` และ damage ส่วนของ attacker เอง ไล่ลำดับ):
+1. `opening_duel`: kill แรกของรอบ (ไม่ใช่ team kill / suicide, กฎเดียวกับ `general_metrics`) — แถวของ attacker และ victim
+2. `clutch`: เจ้าของแถวเป็น clutcher (`build_clutches`) ของรอบนั้น และ tick ≥ start_tick (เหยื่อที่ถูก clutcher ฆ่าใช้สถานการณ์ของตัวเอง)
+3. `afterplant`: หลัง plant (state ก่อน event) และเจ้าของแถวเป็น T
+4. `retake`: หลัง plant และเจ้าของแถวเป็น CT
+5. `mid_round_kd`: ที่เหลือ
+
+part อื่น: damage ของเพื่อน (ไม่ใช่ attacker) → `damage_assist` · `flash_assist` → `flash_assist` · `traded_death` → `traded` · `round_end` → `enemy_saving` (ทั้งสองฝั่ง) · plant / explode → `afterplant` (CT ที่เสีย → `retake`) · defuse → `retake` (T ที่เสีย → `afterplant`) · `time` · `disconnect`
 
 ### 3.3 Out of scope v1
 - คะแนนการ save ปืน (ผลต่อ WP รอบถัดไป) → v2
 - HP ใน features → v2
 - damage ที่ไม่จบด้วย kill ไม่มีเครดิตตัวเอง (ได้ผ่าน damage share ตอนเหยื่อตายเท่านั้น)
+- ข้อมูล defuse kit ใน wp_states (ตอนนี้ `ct_can_defuse` ใช้ ≥ 10s)
 
 ### 3.4 Output
-- `rating_events` (data-model §2.4): 1 แถวต่อ (event, ผู้เล่น) + `category` สำหรับ breakdown (`opening_duel` · `mid_round_kd` · `clutch` · `afterplant` · `retake` · `damage_assist` · `flash_assist` · `traded` · `enemy_saving`/round end) → แต่ละหมวดกำหนดจาก event + สถานะตอนนั้น (นิยามละเอียดใส่ตอน implement)
-- `player_rounds.rating` = Σ delta ของผู้เล่นในรอบ
-- metric `impact` ใน registry: `aggregation: mean` ต่อรอบที่เล่น, scopes `[all, CT, T]`, `status: custom`, unit `%`
-- invariant ที่ต้อง assert: Σ ทุกคนในรอบ ≈ 0 และ Σ ฝั่ง T = outcome_T − wp_start
+- `rating_events` (data-model §2.4) → `data/parsed/<demo>/rating_events.parquet`: 1 แถวต่อ (state, part, ผู้รับ) คอลัมน์ `match_id, round_no, seq, sub, tick, event_type, event_ref, part, steam_id (nullable), is_bot, side, category, delta, wp_pre, wp_after`
+- `player_round_ratings.parquet` (match_id, round_no, steam_id, side, rating = Σ delta ของผู้เล่นในรอบ, ไม่รวม time/disconnect) = ค่าของ `player_rounds.rating` (ยังไม่ merge เข้า `build_player_rounds`)
+- metric `impact` / `impact_ct` / `impact_t` ใน registry: `aggregation: mean` ต่อรอบที่เล่น, scopes `[all, CT, T]`, `status: custom`, unit `pp` (×100 แล้ว); ข้ามแมตช์ใช้ Σ rating / Σ รอบ · join ใน `compute_match_metrics` (truth ไม่มี key `impact` → ไม่ gate)
+- invariant (`check_invariants`, CLI exit 1 ถ้า fail) ต่อรอบ ±1e-9: (ก) Σ แถวฝั่ง T (รวม time/disconnect) = t_won − wp_start (ข) Σ T + Σ CT = 0 (ค) Σ ผู้เล่น/bot ฝั่ง T + Σ time/disconnect ฝั่ง T = (ก) และไม่มีแถว steam_id null นอก time/disconnect/bot · ต่อ state: Σ แถว T = wp_after − wp_pre
+
+### 3.5 ผล v1 (2026-11-05)
+- invariant ผ่านทุกรอบ: FACEIT 8020514f 17/17, inferno 13/13, mirage 24/24, dust2-85507dfb 20/20
+- เทียบ FACEIT Swing (dust2-8020514f, 10 คน, % ต่อรอบ): Pearson All +0.88 / T +0.92 / CT +0.89 · Spearman All +0.78 / T +0.86 / CT +0.94 · MAE 2.5 / 3.0 / 3.1 pp · ผลรวมทีมชนะ ฝั่ง T ours +38.6 vs FACEIT +39.2, ฝั่ง CT +7.0 vs +11.4 · ลำดับในทีมชนะ ρ 0.90 (สลับแค่ ch4dum/o2donggg), ทีมแพ้ ρ 0.30
+- ส่วนที่ไม่มีใครได้ (time) = −4.0 pp ต่อรอบสำหรับ T (เวลาเดินทำให้ T เสีย) ทำให้ผลรวมทีมเราน้อยกว่า FACEIT (ทีมชนะ All +16.3 vs +19.6)
 
 ## 4. RWS
 - รอบที่ทีมชนะ: 100 แต้มแบ่งตามสัดส่วน damage ใส่ศัตรูในรอบนั้น (ไม่นับ team damage)
@@ -128,5 +155,5 @@ Rating รวม (แบบ 1.70 ของ FACEIT) ยังไม่ทำ จ�
 2. RWS + validate กับ FACEIT (ง่ายสุด ได้ผลเร็ว)
 3. `wp_states` builder + CLI `wp-states DEMO...` (ยังไม่ train)
 4. Training + รายงาน §2.4 ✅ (2026-11-05, §2.2.1)
-5. Credit assignment + `rating_events` + metric `impact` + invariant tests
+5. Credit assignment + `rating_events` + metric `impact` + invariant tests ✅ (2026-11-05, §3.5)
 6. เทียบกับ FACEIT Swing / Leetify, ปรับ config, อัปเดต roadmap

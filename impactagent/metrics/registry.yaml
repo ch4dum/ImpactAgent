@@ -209,6 +209,21 @@
   note: our own definition; FACEIT comparison within ~0.01-0.04 per cell (impact-spec §4/§5)
   status: calibrating
 
+- id: impact
+  label: Impact
+  category: rating
+  unit: pp
+  format: "+0.0"
+  direction: higher_better
+  aggregation: mean
+  numerator: Σ player_round_ratings.rating (fraction of a round win)
+  denominator: rounds played
+  source: rating_events (impact-spec §3) — share of each event's win-probability change, mean per round played
+  scopes: [all, CT, T]
+  ref: docs/metrics/impact-spec.md#3-impact-credit
+  note: our own metric; value is already ×100 (percentage points of round-win probability per round; rating_events.delta stays a fraction). Across matches use Σ rating / Σ rounds, never a mean of means
+  status: custom
+
 - id: opening_attempt_pct
   label: Opening Duel Rate
   category: general
