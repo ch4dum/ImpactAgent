@@ -15,7 +15,7 @@
 5. **ทุกตารางมี `match_id` และ `round_no`** เพื่อ filter ตาม side/economy/phase ได้ทุกหน้า
 6. **ผู้เล่นใช้ `steam_id` (Steam64)** เป็น key ส่วนชื่อเปลี่ยนได้ เก็บชื่อที่ใช้ในแมตช์นั้นไว้แยก
 
-**Storage:** ตาราง core (matches → player_rounds, kills, metric_values) อยู่ใน **Postgres** ส่วน event ละเอียด (shots, damages, engagements …) อยู่ใน **Parquet ต่อแมตช์** บน object storage แล้ว query ด้วย DuckDB ตอนต้องการ (ถูกและเร็วกว่าเอา shot เป็นแสนแถวต่อแมตช์ไปใส่ Postgres)
+**Storage:** ตาราง summary (matches, match_players + metric jsonb, rounds, player_rounds) อยู่ใน **Postgres** (Supabase) ส่วน event ทุกชนิด (รวม kills, shots, damages, engagements, rating_events …) อยู่ใน **Parquet ต่อแมตช์** บน R2 แล้ว query ด้วย DuckDB ตอนต้องการ (ถูกและเร็วกว่าเอา shot เป็นแสนแถวต่อแมตช์ไปใส่ Postgres) · ตารางไหนอยู่ที่ไหน + layout ใน R2: [`backend.md`](backend.md) §2.2, §3
 
 ---
 
@@ -65,7 +65,7 @@
 | rating | Impact ของรอบ = Σ `rating_events.delta` ของผู้เล่น (fraction, รวมส่วน time ของ survivors, ไม่รวม disconnect) ตอนนี้อยู่ใน `player_round_ratings.parquet` |
 
 ### 2.3 Event level (Parquet)
-**`kills`** (เก็บใน Postgres ด้วย เพราะใช้บ่อย)
+**`kills`** (Parquet อย่างเดียว ไม่ลง Postgres: owner 2026-11-06, backend.md §0)
 match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, **flash_assist** (bool: ตอนเป็น True `assister_id` คือคน flash; ยังไม่มีคอลัมน์ `flash_assister_id`), weapon, headshot, wallbang, through_smoke, noscope, attacker_blind, attacker_side, victim_side, is_team_kill, **attacker_xyz, victim_xyz, attacker_place, victim_place**, is_suicide (attacker null หรือ = victim), is_opening / traded_by_kill_tick / is_trade_kill (**ยังไม่เป็นคอลัมน์**: opening คิดใน `general_metrics`, trade จาก `trade_windows`), **post_match** (death หลัง `cs_win_panel_match` เช่น world suicide ตอนขึ้น scoreboard: ทุก metric ต้องกรองทิ้ง ยกเว้นตัวหารของ unused utility), **by_disconnect** (suicide/world ที่ tick เดียวกับ `player_disconnect` ของคนตาย: ยังนับเป็น death ใน General แต่ clutch outcome ไม่นับว่าตาย)
 
 **`damages`**: match_id, round_no, tick, attacker_id, victim_id, weapon, hitgroup, dmg_raw, **dmg_effective** (HP ที่หายจริง: cap ที่ HP ที่เหลือ และทุก hit ใน tick ที่ฆ่ารวมกัน = HP ที่เหลือก่อน tick นั้น; HE damage ใน metric utility ใช้ dmg_raw), dmg_armor, victim_hp_after, is_team, attacker_side, victim_side, **attacker_place, victim_place, attacker_xyz, victim_xyz**
@@ -136,8 +136,22 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, **fla
 
 Key: (match_id, round_no, seq, sub, part, side, steam_id). `player_round_ratings.parquet` (match_id, round_no, steam_id, side, rating) = `player_rounds.rating`
 
+**`state_ticks`** (Phase 3, ยังไม่ implement, backend.md §6.2): snapshot ณ ทุก state tick และ tick − 1 (รวม begindefuse) × ผู้เล่น: team_num, is_alive, health, armor_value, has_helmet, has_defuser, is_defusing, current_equip_value, active_weapon, X, Y, Z · คู่กับ `defuse_starts` (begin/abort + haskit) และ `header.json` (cvars) → สร้าง `wp_states` ใหม่ได้โดยไม่ต้องมี demo
+
+**`replay`** (Phase 3.1b, ยังไม่ implement, backend.md §6.3): ตำแหน่ง/ทิศ/HP/อาวุธ 8 Hz ต่อผู้เล่น 1 ไฟล์ต่อรอบ + เส้นทางระเบิด (ข้อยกเว้นของหลัก §1.1)
+
 ### 2.5 Metric values
-**`metric_values`** (long format, 1 แถวต่อ metric ต่อผู้เล่นต่อ scope)
+ค่า metric ต่อผู้เล่นต่อแมตช์มี 2 รูป ข้อมูลเดียวกัน (owner 2026-11-06, backend.md §2.1)
+
+**Postgres: `match_players.metrics`** (jsonb, 1 แถวต่อผู้เล่นต่อแมตช์) ใช้กับหน้าเว็บและ profile
+```json
+{"all": {"adr": [value, numerator, denominator], "ttd": [value, null, null], ...}, "CT": {...}, "T": {...}}
+```
+- key = `id` ใน registry ทุกตัว · `CT` / `T` ใส่เมื่อ `compute_match_metrics` คิดแยกฝั่งได้ (ตอนนี้มีแค่ `all`)
+- รวมข้ามแมตช์ = Σnumerator / Σdenominator (§1.3) · median metric คิดจาก `engagements` (§1.4)
+- เหตุผลที่ไม่ใช้ long ใน PG: ~1.7k แถว/แมตช์ (~300 KB) ทำให้ Supabase free 500 MB จุได้ ~1.4k แมตช์; jsonb ~10 แถว/แมตช์ → ~6k แมตช์
+
+**Parquet: `metric_values.parquet`** (long format, 1 แถวต่อ metric ต่อผู้เล่นต่อ scope) ใช้กับ LLM tool / DuckDB
 | column | หมายเหตุ |
 |---|---|
 | match_id, steam_id, metric_id | |
@@ -145,7 +159,7 @@ Key: (match_id, round_no, seq, sub, part, side, steam_id). `player_round_ratings
 | value | ค่าที่แสดง |
 | numerator, denominator | null สำหรับ median metric |
 
-→ column chooser, การ์ด metric, profile trend และ LLM tool อ่านจากตารางเดียวกันได้หมด
+→ column chooser, การ์ด metric, profile trend และ LLM tool ใช้ค่าชุดเดียวกัน (registry เดียวกัน)
 
 ---
 
@@ -153,7 +167,7 @@ Key: (match_id, round_no, seq, sub, part, side, steam_id). `player_round_ratings
 
 | หน้า Leetify | ตารางที่ใช้ |
 |---|---|
-| Overview / scoreboard / column chooser | metric_values + registry |
+| Overview / scoreboard / column chooser | match_players.metrics (metric_values) + registry |
 | General | player_rounds, kills |
 | Timeline | player_rounds (สะสมรายรอบ), rounds (economy) |
 | Aim | shots, damages, engagements |
@@ -167,7 +181,7 @@ Key: (match_id, round_no, seq, sub, part, side, steam_id). `player_round_ratings
 | Map Zones | kills (place, xyz) + rounds (side, plant_tick, buy_type) |
 | Your Match | metric_values (แมตช์นี้ vs 30 แมตช์ล่าสุด) |
 | Profile / Aim / Utility (หลายแมตช์) | metric_values (รวม num/den), engagements (median) |
-| 2D Replay | ❌ ต้องมี tick data (ยังไม่เก็บ) |
+| 2D Replay | replay (8 Hz, Phase 3.1b) |
 
 ---
 
@@ -269,4 +283,5 @@ Key: (match_id, round_no, seq, sub, part, side, steam_id). `player_round_ratings
 
 ## 7. ยังไม่ตัดสินใจ
 - Trade window: ช่วง [3.48, 4.47) s ใช้ 4.0 (spec §3); นิยาม trade opportunity / attempt รอ visibility
-- Postgres แบบ self-host หรือ Supabase
+- ~~Postgres แบบ self-host หรือ Supabase~~ → **Supabase** (owner 2026-11-06): schema, RLS, R2 layout, jobs อยู่ใน [`backend.md`](backend.md)
+- Scope `CT` / `T` ของ metric (§2.5) รอ `compute_match_metrics` คิดแยกฝั่ง

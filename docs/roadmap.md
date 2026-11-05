@@ -73,11 +73,19 @@
 - [ ] (เลื่อน) Aim / Utility / Positioning Score: แยกตามกลุ่มปืน (sniper / rifle / pistol) ไม่ให้ metric ที่เป็น n/a ดันคะแนน และบอกความมั่นใจตามขนาดตัวอย่าง (บทเรียนจาก Aim 100 ของ Leetify ในแมตช์ที่ใช้ AWP)
 
 ## ▶️ Phase 3: Backend — current (เริ่ม 2026-11-05)
-- [ ] Supabase: Postgres (ตาราง core) + Auth (Steam OpenID ผ่าน backend เรา)
-- [ ] เก็บ event ละเอียดเป็น Parquet; ไฟล์ `.dem` ลบทิ้งหลัง parse
-- [ ] Upload: presigned URL รับ `.dem.bz2` → queue → worker (parse + metrics)
-- [ ] FastAPI
-- [ ] เก็บตำแหน่งผู้เล่นรายรอบไว้เผื่อ 2D Replay (ลดเหลือ 4–8 Hz: X/Y/Z, yaw, HP, อาวุธ, alive + เส้นทางระเบิด) บีบอัดแยกรายรอบ จะได้ไม่ต้อง parse demo ใหม่ตอนทำ replay
+แผนเต็ม: [`design/backend.md`](design/backend.md) (schema, R2 layout, jobs, API, auth, privacy, recompute) · เกณฑ์ผ่านของแต่ละช่วง: backend.md §12
+- [x] **3.0** แผน + schema: `docs/design/backend.md` + data-model §1 / §2.3 / §2.5 / §7 (2026-11-06)
+- [ ] **3.1** `server/pipeline.run_match` + bundle local + refactor ใน `impactagent` ที่ไม่เปลี่ยน logic (`write_tables`, `compute_match_metrics(p, events)`, `read_state_snapshots`) + `state_ticks`: 5 แมตช์ `equals` ของเดิม, `validate-all` เขียว, วัดเวลา / RAM / ขนาด
+- [ ] **3.1b** replay 8 Hz ใน bundle (ตำแหน่ง, ทิศ, HP, อาวุธ, alive, flags + เส้นทางระเบิด, 1 ไฟล์ต่อรอบ)
+- [ ] **3.2** `recompute(bundle)` ไม่มี demo: ผลตรงกับรอบที่มี demo ทุกแมตช์
+- [ ] **3.3** Supabase migrations (local) + loader bundle → PG: scoreboard ตรงกับ `compute_match_metrics`
+- [ ] **3.4** R2: bundle + manifest + lifecycle `incoming/` (2 วัน) / `failed/` (7 วัน)
+- [ ] **3.5** Worker pull loop + state machine + retry / reaper + `job_errors` (fault `input` / `infra` / `ours`)
+- [ ] **3.6** API upload flow + `upload_requests`: หลายคนอัปไฟล์เดียวกัน → 1 job ทุกคนได้แมตช์ · `.dem` / `.dem.bz2` ของแมตช์เดียวกัน → แมตช์เดียว
+- [ ] **3.7** Steam OpenID + `auth.users` (Admin API) + JWT cookie + CORS / CSRF
+- [ ] **3.8** Endpoints match / player / privacy (redact) / admin (failed jobs, retry)
+- [ ] **3.9** docker-compose บน laptop (api + worker + cloudflared) ผ่าน Cloudflare Tunnel `api.tammapol.com`: same-site cookie ใช้ได้จากโดเมนจริง
+- [ ] **3.10** Recompute job + `/admin/recompute` (version ใหม่, rollback ได้)
 
 ## ⏳ Phase 4: AI Coach
 - [ ] LLM layer แบบเปลี่ยน provider ได้ (เริ่มที่ Gemini free tier)
@@ -114,6 +122,8 @@
 | เรื่อง | สถานะ |
 |---|---|
 | Database | **Supabase** (Postgres + Auth) |
+| Backend v0.1 | `docs/design/backend.md` (owner 2026-11-06): Steam OpenID ใน FastAPI → `auth.users` ผ่าน Admin API + JWT cookie ของเราเอง · R2 presigned PUT (`.dem` / `.dem.bz2` / `.dem.gz` / `.dem.zst`, ≤ 512 MB, 10/วัน/user) · queue = ตาราง `jobs` + worker pull · metric ใน PG = jsonb ต่อ (match, player), long format อยู่ Parquet · `kills` Parquet อย่างเดียว · แมตช์ unlisted, profile เฉพาะคนที่ login, มีทางขอลบข้อมูล · replay 8 Hz เก็บตั้งแต่ parse (3.1b) · demo ที่ fail เก็บ 7 วันใน `failed/` · Gemini free tier ช่วง beta (เขียนใน Privacy Policy) · `server/` แพ็กเดียว |
+| Hosting beta | API + worker ใน docker-compose เดียวกันบน laptop + Cloudflare Tunnel (`api.tammapol.com`) → ย้ายไป VPS ทั้งคู่เมื่อคนเยอะ · upload ไป R2 ตรง ไม่ผ่าน Tunnel (limit body 100 MB) (owner 2026-11-06) |
 | Domain | **tammapol.com** (Cloudflare) ใช้ subdomain ไปก่อน |
 | Branches | `main` = rebuild (เดิมชื่อ `v2`, default บน GitHub) · `v1-draft` = prototype เดิม (เดิมชื่อ `main`) ไว้อ้างอิงเท่านั้น (2026-11-05) |
 | ชื่อ product | ยังไม่ตัดสินใจ (ห้ามมี CS2 / Counter-Strike) |
