@@ -11,7 +11,8 @@ row's delta is from the row's own side (T rows +D, CT rows -D for a T-side chang
 The only ×100 (to % per round) is `PCT`, applied in `impact_metrics` and the CLI tables.
 
 Per round the rows are zero-sum between T and CT, and the T rows sum to t_won - wp_start
-(`check_invariants`). Rows with steam_id = null are `time`, `disconnect` (a death by leaving
+(`check_invariants`). Rows with steam_id = null are `time` (with `time_credit: none`, the
+default; `survivors` gives them to the players alive), `disconnect` (a death by leaving
 the server is nobody's play) and bot rows (`is_bot`).
 """
 
@@ -32,6 +33,10 @@ from impactagent.ratings.wp_states import _trainable, build_wp_states
 CFG_PATH = Path(__file__).with_name("credit.yaml")
 PCT = 100.0  # fraction -> % per round; used only by impact_metrics and the CLI
 TOL = 1e-9
+# credit.yaml `time_credit`: none = time rows have no player (steam_id null, default);
+# survivors = each side's players alive before the event share delta_time equally (whole
+# team if nobody is alive), category `time`.
+TIME_CREDIT_MODES = ("none", "survivors")
 
 CATEGORIES = (
     "opening_duel", "mid_round_kd", "clutch", "afterplant", "retake",
@@ -108,6 +113,9 @@ def build_rating_events(p, states: pd.DataFrame | None = None, model: dict | Non
     states = states.reset_index(drop=True)
     wp_after, wp_pre = _state_wps(states, model, p.tickrate)
     split = cfg["kill_split"]
+    time_mode = cfg.get("time_credit", "none")
+    if time_mode not in TIME_CREDIT_MODES:
+        raise ValueError(f"time_credit must be one of {TIME_CREDIT_MODES}, got {time_mode!r}")
 
     kills = p.kills
     if "post_match" in kills:
@@ -200,7 +208,14 @@ def build_rating_events(p, states: pd.DataFrame | None = None, model: dict | Non
 
             Dt = float(wp_pre[i]) - float(wp_after[idx[j - 1]])
             if Dt != 0.0:
-                null_pair("time", "time", Dt)
+                if time_mode == "survivors":
+                    # survivors before e (else the whole team) share the clock's ΔWP
+                    for side, sg in (("T", 1.0), ("CT", -1.0)):
+                        rec = receivers(side)
+                        for sid in rec:
+                            emit("time", sid, side, "time", sg * Dt / len(rec))
+                else:
+                    null_pair("time", "time", Dt)
             D = float(wp_after[i]) - float(wp_pre[i])
 
             if et == "kill":

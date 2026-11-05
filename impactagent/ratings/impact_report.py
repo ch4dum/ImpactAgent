@@ -18,12 +18,13 @@ from impactagent.ratings.credit import (
     build_rating_events,
     check_invariants,
     impact_metrics,
+    load_config,
     player_round_ratings,
 )
 
 _SHORT = {"opening_duel": "open", "mid_round_kd": "mid", "clutch": "clutch", "afterplant": "aftpl",
           "retake": "retake", "damage_assist": "dmg_a", "flash_assist": "fl_a", "traded": "traded",
-          "enemy_saving": "save"}
+          "enemy_saving": "save", "time": "time"}
 _SCOPES = (("impact", "swing", "All"), ("impact_t", "swing_t", "T"), ("impact_ct", "swing_ct", "CT"))
 
 
@@ -84,7 +85,7 @@ def _print_faceit(tab: pd.DataFrame) -> None:
 def _print_breakdown(ev: pd.DataFrame, tab: pd.DataFrame, played: pd.Series, n_rounds: int) -> None:
     e = ev[ev["steam_id"].notna()].copy()
     e["steam_id"] = e["steam_id"].astype(object)
-    cats = [c for c in CATEGORIES if c not in ("time", "disconnect")]
+    cats = [c for c in CATEGORIES if c != "disconnect" and (c != "time" or (e["category"] == "time").any())]
     b = (e.pivot_table(index="steam_id", columns="category", values="delta", aggfunc="sum")
          .reindex(columns=cats).fillna(0.0))
     b = b.div(played.reindex(b.index), axis=0) * PCT
@@ -101,12 +102,15 @@ def _print_breakdown(ev: pd.DataFrame, tab: pd.DataFrame, played: pd.Series, n_r
         print(f"  no-player rows, {side} side (% per match round): {items}")
 
 
-def run_impact(demo, out_dir=None, faceit=None, breakdown: bool = False) -> int:
-    """exit 0, or 1 if an invariant fails."""
+def run_impact(demo, out_dir=None, faceit=None, breakdown: bool = False, time_credit: str | None = None) -> int:
+    """exit 0, or 1 if an invariant fails. time_credit overrides credit.yaml `time_credit`."""
     from impactagent.parse.demo import parse_demo
 
     p = parse_demo(demo)
-    ev, rounds = build_rating_events(p)
+    cfg = load_config()
+    if time_credit:
+        cfg["time_credit"] = time_credit
+    ev, rounds = build_rating_events(p, cfg=cfg)
     probs = check_invariants(ev, rounds)
     prr = player_round_ratings(ev, p)
     im = impact_metrics(p, ev)
@@ -122,6 +126,7 @@ def run_impact(demo, out_dir=None, faceit=None, breakdown: bool = False) -> int:
     tab = im.join(names).assign(rounds=played)
     n_null = int(ev["steam_id"].isna().sum())
     print(f"impact: {Path(demo).name}  map={p.map_name} rounds={len(p.rounds)} rows={len(ev)} "
+          f"time_credit={cfg['time_credit']} "
           f"(steam_id null: {n_null} time / disconnect / bot)")
     bots = int(ev["is_bot"].sum())
     if bots:

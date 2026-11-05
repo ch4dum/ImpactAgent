@@ -119,7 +119,7 @@ def _cmd_impact(args: argparse.Namespace) -> int:
     from impactagent.ratings.impact_report import run_impact
 
     out = args.out or f"data/parsed/{_demo_stem(Path(args.demo))}"
-    return run_impact(args.demo, out, args.faceit, args.breakdown)
+    return run_impact(args.demo, out, args.faceit, args.breakdown, args.time_credit)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -187,6 +187,7 @@ def main(argv: list[str] | None = None) -> int:
     im.add_argument("--out", help="folder for rating_events / player_round_ratings Parquet")
     im.add_argument("--faceit", type=Path, help="FACEIT scoreboard JSON: compare with Swing")
     im.add_argument("--breakdown", action="store_true", help="per-category table")
+    im.add_argument("--time-credit", choices=["none", "survivors"], help="override credit.yaml time_credit")
     im.set_defaults(func=_cmd_impact)
 
     args = ap.parse_args(argv)

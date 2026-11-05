@@ -131,6 +131,30 @@ part อื่น: damage ของเพื่อน (ไม่ใช่ attack
 - เทียบ FACEIT Swing (dust2-8020514f, 10 คน, % ต่อรอบ): Pearson All +0.88 / T +0.92 / CT +0.89 · Spearman All +0.78 / T +0.86 / CT +0.94 · MAE 2.5 / 3.0 / 3.1 pp · ผลรวมทีมชนะ ฝั่ง T ours +38.6 vs FACEIT +39.2, ฝั่ง CT +7.0 vs +11.4 · ลำดับในทีมชนะ ρ 0.90 (สลับแค่ ch4dum/o2donggg), ทีมแพ้ ρ 0.30
 - ส่วนที่ไม่มีใครได้ (time) = −4.0 pp ต่อรอบสำหรับ T (เวลาเดินทำให้ T เสีย) ทำให้ผลรวมทีมเราน้อยกว่า FACEIT (ทีมชนะ All +16.3 vs +19.6)
 
+### 3.6 ทดลอง §6.6 ช่วงแรก (2026-11-05, ยังไม่เปลี่ยน default)
+- config ใหม่ `time_credit: none | survivors` (default `none`; CLI `--time-credit`): `survivors` = delta_time ของแต่ละ state แบ่งเท่ากันให้คนที่ยังรอดก่อน event ของแต่ละฝั่ง (T +Dt, CT −Dt; ไม่มีคนรอด → ทั้งทีม) category `time` · invariant ผ่านทั้ง 2 โหมดใน 4 แมตช์
+- FACEIT 8020514f (10 คน, pp ต่อรอบ):
+
+| | none | survivors |
+|---|---|---|
+| Pearson All / T / CT | 0.883 / 0.921 / 0.888 | **0.907 / 0.925 / 0.915** |
+| Spearman All / T / CT | 0.782 / 0.855 / 0.939 | 0.830 / 0.855 / 0.952 |
+| MAE All / T / CT | 2.50 / 3.00 / 3.10 | **2.32** / 3.11 / **2.37** |
+| ทีมชนะ All (FACEIT +19.57) | +16.28 | **+19.76** |
+| ทีมชนะ ฝั่ง T (+39.15) / ฝั่ง CT (+11.43) | +38.57 / +6.99 | +37.69 / **+12.29** |
+| ลำดับในทีม ชนะ / แพ้ (ρ) | 0.90 / 0.30 | 0.90 / 0.30 |
+
+  ⇒ FACEIT น่าจะให้ส่วนเวลากับคนรอด (ผลรวมทีมตรงขึ้นมาก) แต่แค่ 1 แมตช์
+- 3 คนที่ |diff| มากสุด (survivors): o2donggg +4.0 (ของเราสูงกว่า), FigaDiGuine −3.6, whyskushy +3.5 (ch4dum −3.4 ตามมา)
+  - o2donggg (20-7, ADR 131): damage part +7.8 pp สูงสุด และ death เสียเฉลี่ยน้อย (−16 ต่อครั้ง) → เราน่าจะให้ damage share มากกว่า FACEIT
+  - whyskushy (7-14, ADR 57): damage_assist +1.95 และ afterplant +2.0 ดันขึ้น ทั้งที่ ADR ต่ำ → เหมือนกัน: damage share ของเราใจดีกับคนที่ทำ damage แล้วเพื่อนเก็บ kill
+  - FigaDiGuine (9-15) / ch4dum (23-9): death แพง (−19 / −23 ต่อครั้ง เพราะตายตอน WP ทีมสูง) → FACEIT น่าจะหักต่อ death น้อยกว่า หรือแบ่งความผิดของ death ให้คนอื่น
+  - ข้อสรุปเบื้องต้น: ส่วนต่างหลักอยู่ที่ damage share (0.30) กับราคาของ death ไม่ใช่หมวด situational — ยังไม่ปรับ (1 แมตช์)
+- **Leetify:** truth JSON 3 pair มี `leetify_rating` (ต่อผู้เล่น, ทั้งแมตช์, หน่วยเดียวกับเรา = pp ต่อรอบ), `hltv_rating`, `personal_performance` และ `utility_*_rating`; **ไม่มี rating breakdown ต่อหมวด**
+  - impact ของเรา vs `leetify_rating` (10 คน/แมตช์), none → survivors: inferno r 0.992 → 0.991 (MAE 0.92 → 1.22) · mirage r 0.889 → 0.910 (ρ 0.37 → 0.39, MAE 1.45 → 1.31) · dust2 r 0.975 → 0.980 (MAE 1.56 → 1.51)
+  - mirage ρ ต่ำ เพราะคนที่ค่าใกล้ 0 สลับลำดับกัน (Boonrywaa ของเรา +4.6 vs Leetify +0.9; J −0.6 vs +1.7)
+  - ค่า Leetify เป็น calibration data เก็บใน gitignored `data/validation/` เท่านั้น
+
 ## 4. RWS
 - รอบที่ทีมชนะ: 100 แต้มแบ่งตามสัดส่วน damage ใส่ศัตรูในรอบนั้น (ไม่นับ team damage)
 - **damage = sequential** ไม่ใช่ `dmg_effective`: แต่ละ hit cap ที่ HP ที่เหลือก่อนโดน (`min(dmg_raw, HP_remaining)`) เรียงตามลำดับ event ต่อ (รอบ, เหยื่อ) ส่วน `dmg_effective` รวม hit ใน tick ที่เหยื่อตายเป็นกลุ่มเดียว ("killing tick = hits รวมกัน = HP ก่อน tick") ซึ่งทำให้ RWS ต่างจาก FACEIT ใน kill tick ที่มีหลาย hit พร้อมกัน (shotgun / หลายคนยิงตายใน tick เดียว)
