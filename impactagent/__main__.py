@@ -173,10 +173,10 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--manifest", default="data/train_demos/manifest.csv")
     w.set_defaults(func=_cmd_wp_states)
 
-    tw = sub.add_parser("train-wp", help="train WP model v1 (impact-spec §6.4, needs .[train])")
+    tw = sub.add_parser("train-wp", help="train the WP model (impact-spec §6.4, needs .[train])")
     tw.add_argument("states", type=Path)
-    tw.add_argument("--out", default="impactagent/ratings/wp_model_v1.json")
-    tw.add_argument("--set", choices=["A", "B", "C", "D"], help="feature set (default: best CV log loss)")
+    tw.add_argument("--out", default="impactagent/ratings/wp_model_v2.json")
+    tw.add_argument("--set", choices=["A", "B", "C", "D", "E"], help="feature set (default: D)")
     tw.add_argument("--faceit-demo", type=Path, help="held-out demo for the round-start WP check")
     tw.add_argument("--faceit-states", default="data/parsed/wp_states_faceit.parquet")
     tw.add_argument("--faceit-member", default="haineieie")

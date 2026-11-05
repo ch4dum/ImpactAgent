@@ -1,8 +1,9 @@
-"""Train the round-win probability model (WP v1, impact-spec §2.2 / §2.4).
+"""Train the round-win probability model (WP, impact-spec §2.2 / §2.4).
 
 `python -m impactagent train-wp data/parsed/wp_states.parquet` compares feature sets with
 GroupKFold CV (groups = match), picks C per set, fits the chosen set on all data and writes
-`impactagent/ratings/wp_model_v1.json` (standardization mean/std + coefficients). Prediction
+`impactagent/ratings/wp_model_v2.json` (standardization mean/std + coefficients; v1 is kept
+unchanged, v2 uses the kit-aware ct_can_defuse). Prediction
 lives in `wp_model.py` and needs numpy only; scikit-learn is imported in this file alone
 (`pip install -e .[train]`).
 """
@@ -30,6 +31,7 @@ FEATURE_SETS: dict[str, list[str]] = {
     "B": BASE + ["map_dust2", "map_mirage"],
     "C": BASE + ["map_dust2", "map_mirage", "alive_prod"],
     "D": BASE + ["map_dust2", "map_mirage", "alive_prod", "ct_can_defuse"],
+    "E": BASE + ["map_dust2", "map_mirage", "alive_prod", "ct_can_defuse", "ct_has_kit"],
 }
 C_GRID = (0.01, 0.1, 1.0, 10.0)
 # Default set (impact-spec §2.2): D. Its CV log loss is within fold noise of A (Δ ≈ 0.002,
@@ -241,7 +243,7 @@ def run_train_wp(
     X = feature_matrix(df, feats)
     fit = _fit_logreg(X, y, w, C)
     model = {
-        "name": "wp_model_v1",
+        "name": Path(out).stem,
         "kind": "logistic_regression_l2_standardized",
         "C": C,
         "features": feats,

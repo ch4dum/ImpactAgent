@@ -1,7 +1,7 @@
-"""Round-win probability model (WP) v1 — prediction only, no scikit-learn.
+"""Round-win probability model (WP) — prediction only, no scikit-learn.
 
 The model is an L2 logistic regression on standardized features, fitted by `train_wp.py`
-(scikit-learn, training only). Its parameters are plain JSON (`wp_model_v1.json`: features,
+(scikit-learn, training only). Its parameters are plain JSON (`wp_model_v2.json`: features,
 mean, std, coefficients, intercept) and prediction here is pure numpy. `predict_wp` returns
 WP from the T side's point of view for each state row; rows marked `trainable=False` get a
 WP fixed by rule (impact-spec §2.2) instead of the model.
@@ -15,14 +15,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-_MODEL_PATH = Path(__file__).with_name("wp_model_v1.json")
+# v2 = v1 features with a kit-aware ct_can_defuse (wp_states.ct_has_kit). v1 is kept as is.
+_MODEL_PATH = Path(__file__).with_name("wp_model_v2.json")
 
 # Maps with >= 5 training matches get their own intercept; every other map is all-zero
 # (falls back to the global intercept). impact-spec §2.2.
 KEPT_MAPS = ("de_dust2", "de_mirage")
 
 # Seconds of C4 left a CT needs to start a defuse: 5 s with a kit, 10 s without. A state
-# without kit info (wp_states has no kit column yet) uses the no-kit time.
+# without kit info (no `ct_has_kit` column, e.g. wp_states built before v2) uses the no-kit time.
 DEFUSE_S_KIT = 5.0
 DEFUSE_S_NO_KIT = 10.0
 
@@ -66,6 +67,8 @@ def feature_matrix(states: pd.DataFrame, features: list[str]) -> np.ndarray:
         # 1 after the plant while a surviving CT still has time to defuse; 0 otherwise
         # (pre-plant it is 0, so it acts as an interaction with bomb_planted).
         "ct_can_defuse": ((planted == 1) & (time_left >= need)).astype(float),
+        # 1 after the plant while a surviving CT has a kit (CV candidate, set E).
+        "ct_has_kit": ((planted == 1) & kit).astype(float),
     }
     for m in KEPT_MAPS:
         cols["map_" + m.removeprefix("de_")] = (mp == m).astype(float)

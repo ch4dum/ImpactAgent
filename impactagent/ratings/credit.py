@@ -72,7 +72,11 @@ def _state_wps(states: pd.DataFrame, model: dict, tickrate: int) -> tuple[np.nda
     prev = st.shift(1)
     first = (st["event_type"] == "freeze_end") | (st["round_no"] != prev["round_no"])
     pre = st.copy()
-    for c in ("t_alive", "ct_alive", "bomb_planted", "equip_diff_k"):
+    # The pre-event state carries every feature of the previous state (kit included: a CT
+    # killed by e may have been the one holding it).
+    carry = ("t_alive", "ct_alive", "bomb_planted", "equip_diff_k") + (
+        ("ct_has_kit",) if "ct_has_kit" in st else ())
+    for c in carry:
         pre[c] = np.where(first, st[c], prev[c])
     pre["time_left_s"] = np.where(
         first, st["time_left_s"], prev["time_left_s"] - (st["tick"] - prev["tick"]) / tickrate

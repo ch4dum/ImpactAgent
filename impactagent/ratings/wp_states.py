@@ -2,8 +2,9 @@
 
 One row per "state": freeze end, then after every state-changing event — kill (suicide /
 world / team kill included), bomb plant, defuse, explode, round end. Features are from the
-T side's point of view. Derived data; no per-tick data is stored — equipment value is
-sampled only at the state ticks (via `parse_ticks` on the exact ticks we need).
+T side's point of view. Derived data; no per-tick data is stored — equipment value and
+defuse kits (`ct_has_kit`: a CT alive after the event has a kit) are sampled only at the
+state ticks (via `parse_ticks` on the exact ticks we need).
 
 `trainable` marks which rows the WP model must predict. The rest have a WP fixed by rule
 (§2.2 / round-end, defuse, explode, and rounds already decided by alive count).
@@ -23,7 +24,7 @@ from impactagent.parse.demo import _demo_file, _sid, parse_demo
 # Column order of the built table.
 STATE_COLUMNS = [
     "match_id", "map", "round_no", "tick", "event_type", "event_ref",
-    "t_alive", "ct_alive", "bomb_planted", "time_left_s", "equip_diff_k",
+    "t_alive", "ct_alive", "bomb_planted", "time_left_s", "equip_diff_k", "ct_has_kit",
     "t_won", "trainable",
 ]
 
@@ -155,13 +156,14 @@ def _read_timers_and_equip(dem_path: Path, state_ticks: list[int]):
     elif abs(c4 - C4_TIMER_S) > TIMER_WARN_SECONDS:
         warns.append(f"mp_c4timer={c4:.1f}s differs from constant {C4_TIMER_S}s")
 
-    eq = pd.DataFrame(parser.parse_ticks(["team_num", "current_equip_value"], ticks=state_ticks))
+    eq = pd.DataFrame(parser.parse_ticks(["team_num", "current_equip_value", "has_defuser"], ticks=state_ticks))
     if eq.empty:
-        eq = pd.DataFrame(columns=["tick", "steamid", "team_num", "current_equip_value"])
+        eq = pd.DataFrame(columns=["tick", "steamid", "team_num", "current_equip_value", "has_defuser"])
     eq["sid"] = _sid(eq["steamid"])
     eq = eq[eq["sid"].notna() & eq["team_num"].isin([2, 3])].copy()
     eq["side"] = eq["team_num"].map(SIDE_BY_TEAM_NUM)
     eq["value"] = eq.get("current_equip_value", 0).fillna(0).astype(float)
+    eq["kit"] = eq.get("has_defuser", False).fillna(False).astype(bool)
     return rt, c4, eq, warns
 
 
@@ -177,6 +179,7 @@ def build_wp_states(p) -> tuple[pd.DataFrame, dict]:
     with _demo_file(dem_path) as (plain, _sha):
         rt, c4, eq, timer_warns = _read_timers_and_equip(plain, state_ticks)
     eq_by_tick_sid = eq.set_index(["tick", "sid"])["value"].to_dict()
+    kit_by_tick_sid = eq.set_index(["tick", "sid"])["kit"].to_dict()
 
     rows = []
     n_neg_time = 0
@@ -218,6 +221,12 @@ def build_wp_states(p) -> tuple[pd.DataFrame, dict]:
             else:
                 ct_sum += v
         equip_diff_k = (t_sum - ct_sum) / 1000.0
+        # At least one CT still alive after this event carries a defuse kit.
+        ct_has_kit = any(
+            bool(kit_by_tick_sid.get((tick, sid), False))
+            for sid in alive_sids
+            if side_of.get(sid) == "CT"
+        )
 
         # Assert: a kill of a T must not RAISE equip_diff (T side lost equipment), and a
         # kill of a CT must not LOWER it — relative to the previous state of this round.
@@ -259,6 +268,7 @@ def build_wp_states(p) -> tuple[pd.DataFrame, dict]:
                 "bomb_planted": s["bomb_planted"],
                 "time_left_s": time_left,
                 "equip_diff_k": equip_diff_k,
+                "ct_has_kit": ct_has_kit,
                 "t_won": s["t_won"],
                 "trainable": _trainable(s["event_type"], s["t_alive"], s["ct_alive"], s["bomb_planted"]),
             }
@@ -270,6 +280,7 @@ def build_wp_states(p) -> tuple[pd.DataFrame, dict]:
     df["t_alive"] = df["t_alive"].astype("int64")
     df["ct_alive"] = df["ct_alive"].astype("int64")
     df["bomb_planted"] = df["bomb_planted"].astype("int8")
+    df["ct_has_kit"] = df["ct_has_kit"].astype(bool)
     df["t_won"] = df["t_won"].astype("int8")
     df["trainable"] = df["trainable"].astype(bool)
     stats = {
