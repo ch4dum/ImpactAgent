@@ -22,6 +22,7 @@
 - [ ] Engagements + visibility v0 (`spotted`) → Aim: spotted accuracy, TTD, crosshair, counter-strafe, spray, TTK, first bullet
 - [ ] Visibility v1 (raycast กับ map geometry) ทำเฉพาะถ้า v0 คลาดจาก Leetify มาก
   - [x] Spike awpy 3.1.1 `VisibilityChecker` (`scripts/visibility_spike.py`, ยังไม่เข้า metrics): kill ปกติ "เห็น" 95.8% (inferno 69/72) / 95.4% (mirage 145/152), penetrated เห็นแค่ 1/2 และ 1/8, ~3-4 µs ต่อ ray, mesh โหลด < 0.1s
+  - [x] Kill ที่ "ไม่เห็น" (~4-5%) มาจาก lag compensation: ย้อนตำแหน่งคนตาย 2-7 tick แล้วเห็นครบ 72/72 และ 152/152; ไม่มีจุดชน mesh ใกล้ตัว < 16 unit (ไม่ใช่ player clip); eye height ใช้ `m_flDuckViewOffset` (demo ไม่มี `m_vecViewOffset`); ย้อนแล้ว penetrated "เห็น" เพิ่มจาก 1/8 เป็น 2/8 บน mirage
 - [ ] Round buy type (pistol / eco / semi-eco / force / full) + Map Zones (`last_place_name`)
 
 ## ⏳ Phase 2: Ratings (สูตรของเราเอง ไม่ใช้ชื่อ Leetify)
