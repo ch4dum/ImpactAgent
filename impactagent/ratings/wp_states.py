@@ -59,7 +59,6 @@ def infer_source(filename: str) -> str:
 def _iter_states(p, tickrate: int):
     """Yield one dict per state (everything except time_left_s and equip_diff_k)."""
     prs = p.player_rounds_side
-    side_of = dict(zip(prs["steam_id"], prs["side"]))
     kills = p.kills
     if "post_match" in kills:
         kills = kills[~kills["post_match"]]
@@ -74,38 +73,46 @@ def _iter_states(p, tickrate: int):
 
         rprs = prs[prs["round_no"] == rno]
         all_sids = set(rprs["steam_id"])
+        # Side is per-round, not global: players swap sides at half-time, so a single
+        # steam_id appears as both T and CT across the match. smearing one side over all
+        # rounds (dict(zip(...)) would) flips equip_diff for every swapped player (bug).
+        side_by_sid = dict(zip(rprs["steam_id"], rprs["side"]))
         init_t = int((rprs["side"] == "T").sum())
         init_ct = int((rprs["side"] == "CT").sum())
 
-        rk = kills[(kills["round_no"] == rno) & (kills["tick"] <= end)].sort_values("tick")
-        if not rk.empty:
-            kill_grp = rk.groupby("tick").agg(
-                n_t=("victim_side", lambda s: int((s == "T").sum())),
-                n_ct=("victim_side", lambda s: int((s == "CT").sum())),
-                victims=("victim_id", lambda s: json.dumps([str(x) for x in s])),
-            )
-        else:
-            kill_grp = pd.DataFrame(columns=["n_t", "n_ct", "victims"])
+        # Only kills inside the round's live window [freeze_end, end] move the alive tally.
+        # A kill before freeze_end belongs to the previous round's aftermath (or a pause /
+        # timeout) and must not shrink whoever is alive now; a kill after `end` is post-round.
+        rk = kills[(kills["round_no"] == rno) & (kills["tick"] >= fe) & (kills["tick"] <= end)]
+
+        # Victims (and their side) per tick, preserving order.
+        kill_by_tick: dict[int, list[tuple[object, str]]] = {}
+        for tick, vid, vs in zip(rk["tick"], rk["victim_id"], rk["victim_side"]):
+            kill_by_tick.setdefault(int(tick), []).append((vid, vs))
 
         rb = p.bomb[p.bomb["round_no"] == rno]
 
         events = [(fe, "freeze_end", "")]
-        for t in kill_grp.index:
-            events.append((int(t), "kill", kill_grp.loc[t, "victims"]))
+        for t in sorted(kill_by_tick):
+            events.append((t, "kill", json.dumps([str(v) for v, _ in kill_by_tick[t]])))
         for _, b in rb.iterrows():
             events.append((int(b["tick"]), str(b["type"]), str(b["steam_id"] or "")))
         events.append((end, "round_end", str(r["win_reason"])))
         events.sort(key=lambda e: (e[0], _EVENT_PRIO[e[1]]))
 
         planted = False
-        dead_t = dead_ct = 0
-        dead_sids: set[str] = set()
+        # Alive tally from UNIQUE dead sids per side: a victim whose death fires twice in a
+        # round (exit frag + a later duplicate) must not be subtracted twice (was -1 bug).
+        dead_t_sids: set[object] = set()
+        dead_ct_sids: set[object] = set()
         for tick, etype, ref in events:
             if etype == "kill":
-                kg = kill_grp.loc[tick]
-                dead_t += int(kg["n_t"])
-                dead_ct += int(kg["n_ct"])
-                dead_sids.update(json.loads(ref))
+                for vid, vs in kill_by_tick[tick]:
+                    if pd.notna(vid):
+                        if vs == "T":
+                            dead_t_sids.add(vid)
+                        elif vs == "CT":
+                            dead_ct_sids.add(vid)
             if etype == "plant":
                 planted = True
             yield {
@@ -113,11 +120,12 @@ def _iter_states(p, tickrate: int):
                 "tick": tick,
                 "event_type": etype,
                 "event_ref": ref,
-                "t_alive": init_t - dead_t,
-                "ct_alive": init_ct - dead_ct,
+                "t_alive": init_t - len(dead_t_sids),
+                "ct_alive": init_ct - len(dead_ct_sids),
                 "bomb_planted": 1 if planted else 0,
                 "t_won": t_won,
-                "alive_sids": all_sids - dead_sids,
+                "alive_sids": all_sids - dead_t_sids - dead_ct_sids,
+                "side_by_sid": side_by_sid,
                 "freeze_end_tick": fe,
                 "plant_tick": plant_tick,
             }
@@ -162,7 +170,6 @@ def build_wp_states(p) -> tuple[pd.DataFrame, dict]:
 
     `p` is a ParsedDemo (parse_demo(..., fast=True) is enough — trade/aim tables are unused).
     """
-    side_of = dict(zip(p.player_rounds_side["steam_id"], p.player_rounds_side["side"]))
     states = list(_iter_states(p, p.tickrate))
     state_ticks = sorted({s["tick"] for s in states})
 
@@ -175,15 +182,33 @@ def build_wp_states(p) -> tuple[pd.DataFrame, dict]:
     n_neg_time = 0
     n_missing = 0
     n_extra = 0
+    n_time_oob = 0          # time_left_s outside [0, limit + 1]
+    n_alive_oob = 0         # t_alive / ct_alive outside [0, 5]
+    n_equip_sign_viol = 0   # equip_diff_k moved against a kill's victim side
+    freeze_alive_mismatch_rounds: set[int] = set()  # rounds whose freeze-end alive count
+    #   disagrees between player_rounds_side and the tick snapshot (e.g. a bot present in
+    #   one but not the other).
+    prev = None
     for s in states:
         tick = s["tick"]
-        if s["bomb_planted"]:
+        bomb = bool(s["bomb_planted"])
+        if bomb:
             time_left = c4 - (tick - s["plant_tick"]) / p.tickrate
+            time_limit = c4
         else:
             time_left = rt - (tick - s["freeze_end_tick"]) / p.tickrate
+            time_limit = rt
         if time_left < -1.0:
             n_neg_time += 1
+        if time_left > time_limit + 1.0:
+            n_time_oob += 1
 
+        t_alive = s["t_alive"]
+        ct_alive = s["ct_alive"]
+        if not (0 <= t_alive <= 5 and 0 <= ct_alive <= 5):
+            n_alive_oob += 1
+
+        side_of = s["side_by_sid"]  # per-round side, not the global (swapped-side) mapping
         alive_sids = s["alive_sids"]
         t_sum = ct_sum = 0.0
         for sid in alive_sids:
@@ -194,12 +219,32 @@ def build_wp_states(p) -> tuple[pd.DataFrame, dict]:
                 ct_sum += v
         equip_diff_k = (t_sum - ct_sum) / 1000.0
 
+        # Assert: a kill of a T must not RAISE equip_diff (T side lost equipment), and a
+        # kill of a CT must not LOWER it — relative to the previous state of this round.
+        # (Weapon pick-ups in between can legitimately violate this; we count them.)
+        if s["event_type"] == "kill" and prev is not None and prev["round_no"] == s["round_no"]:
+            dt = t_alive - prev["t_alive"]
+            dc = ct_alive - prev["ct_alive"]
+            if dt < 0 and equip_diff_k > prev["equip_diff_k"]:
+                n_equip_sign_viol += 1
+            if dc < 0 and equip_diff_k < prev["equip_diff_k"]:
+                n_equip_sign_viol += 1
+        prev = {
+            "round_no": s["round_no"], "t_alive": t_alive,
+            "ct_alive": ct_alive, "equip_diff_k": equip_diff_k,
+        }
+
         # Cross-check kills-based alive set vs who the tick data still lists alive.
         # missing = a survivor the tick data omits (their equip is under-counted as 0);
         # extra   = someone we count as dead still in the tick snapshot (the death tick).
         tick_alive = set(eq.loc[eq["tick"] == tick, "sid"])
         n_missing += len(alive_sids - tick_alive)
         n_extra += len(tick_alive - alive_sids)
+
+        # At freeze_end the kills-based count must equal the tick snapshot count (bots
+        # included). A difference means player_rounds_side and the tick snapshot disagree.
+        if s["event_type"] == "freeze_end" and len(tick_alive) != t_alive + ct_alive:
+            freeze_alive_mismatch_rounds.add(s["round_no"])
 
         rows.append(
             {
@@ -230,8 +275,12 @@ def build_wp_states(p) -> tuple[pd.DataFrame, dict]:
     stats = {
         "timer_warns": timer_warns,
         "neg_time": n_neg_time,
+        "time_oob": n_time_oob,
+        "alive_oob": n_alive_oob,
+        "equip_sign_viol": n_equip_sign_viol,
         "equip_alive_missing": n_missing,
         "equip_alive_extra": n_extra,
+        "freeze_alive_mismatch_rounds": len(freeze_alive_mismatch_rounds),
     }
     return df, stats
 
@@ -297,6 +346,10 @@ def run_wp_states(
     total_neg_time = 0
     total_missing = 0
     total_extra = 0
+    total_time_oob = 0
+    total_alive_oob = 0
+    total_sign_viol = 0
+    total_freeze_mismatch_rounds = 0
     timer_warns_all: list[str] = []
 
     for f in demo_files:
@@ -327,6 +380,10 @@ def run_wp_states(
         total_neg_time += st["neg_time"]
         total_missing += st["equip_alive_missing"]
         total_extra += st["equip_alive_extra"]
+        total_time_oob += st["time_oob"]
+        total_alive_oob += st["alive_oob"]
+        total_sign_viol += st["equip_sign_viol"]
+        total_freeze_mismatch_rounds += st["freeze_alive_mismatch_rounds"]
         timer_warns_all.extend(f"{f.name}: {w}" for w in st["timer_warns"])
         manifest_rows.append(
             {"file": f.name, "map": p.map_name, "source": source, "rounds": n,
@@ -347,7 +404,9 @@ def run_wp_states(
 
     # ---- summary
     n_train = len(frames)
-    n_rounds = int(manifest.loc[manifest["rounds"].ne(""), "rounds"].astype(int).sum()) if len(manifest) else 0
+    # Rounds of USED matches only (excluded validation / parse-failed matches don't count).
+    used = manifest[manifest["excluded_reason"] == ""]
+    n_rounds = int(used["rounds"].astype(int).sum()) if len(used) else 0
     per_map = (
         manifest[manifest["excluded_reason"] == ""]
         .groupby("map").agg(matches=("file", "size"))
@@ -375,7 +434,10 @@ def run_wp_states(
         for w in timer_warns_all:
             print(f"    {w}")
     print(f"  sanity: time_left_s < -1 rows = {total_neg_time}; "
-          f"equip-alive cross-check missing={total_missing} extra={total_extra}")
+          f"time_left_s out-of-range = {total_time_oob}; alive out-of-range = {total_alive_oob}; "
+          f"equip-sign violations = {total_sign_viol}")
+    print(f"          equip-alive cross-check missing={total_missing} extra={total_extra}; "
+          f"freeze-end alive-mismatch rounds = {total_freeze_mismatch_rounds}")
     print(f"  manifest -> {manifest_path}")
 
     return 1 if failed else 0

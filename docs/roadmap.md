@@ -62,6 +62,7 @@
 - [ ] เก็บ event ละเอียดเป็น Parquet; ไฟล์ `.dem` ลบทิ้งหลัง parse
 - [ ] Upload: presigned URL รับ `.dem.bz2` → queue → worker (parse + metrics)
 - [ ] FastAPI
+- [ ] เก็บตำแหน่งผู้เล่นรายรอบไว้เผื่อ 2D Replay (ลดเหลือ 4–8 Hz: X/Y/Z, yaw, HP, อาวุธ, alive + เส้นทางระเบิด) บีบอัดแยกรายรอบ จะได้ไม่ต้อง parse demo ใหม่ตอนทำ replay
 
 ## ⏳ Phase 4: AI Coach
 - [ ] LLM layer แบบเปลี่ยน provider ได้ (เริ่มที่ Gemini free tier)
@@ -89,7 +90,8 @@
 - [ ] **Security & Policy:** Rate limit / คุมค่า LLM, Terms of Service / Privacy Policy
 
 ## หลัง MVP
-ดึงแมตช์อัตโนมัติด้วย share code · benchmark ตาม rank · Focus Areas · 2D Replay · Highlights
+- [ ] **2D Replay** (งานแรกหลัง MVP หรือรวมใน Phase 5): radar + จุดผู้เล่น/ทิศที่มอง/kill feed/timeline รายรอบ (MVP ~1–2 สัปดาห์) → ระเบิดครบ, HP, แมพหลายชั้น (Nuke) · AI coach ลิงก์ไปที่ tick ใน replay ได้ · ภาพ radar เป็นของ Valve ต้องเช็คสิทธิ์ก่อนเปิดสาธารณะ
+ดึงแมตช์อัตโนมัติด้วย share code · benchmark ตาม rank · Focus Areas · Highlights
 
 ---
 
