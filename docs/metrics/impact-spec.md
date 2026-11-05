@@ -1,6 +1,6 @@
 # Impact & RWS Spec (Phase 2) — v0.1 draft
 
-สถานะ: **ร่าง รอ owner review** (2026-11-05) · ชื่อที่แสดงให้ผู้ใช้เห็นต้องเป็นของเราเอง (ไม่ใช้ "Swing" ของ FACEIT / ชื่อของ Leetify)
+สถานะ: **v1 — Phase 2 ปิดแล้ว** (2026-11-05) · ชื่อที่แสดงให้ผู้ใช้เห็นต้องเป็นของเราเอง (ไม่ใช้ "Swing" ของ FACEIT / ชื่อของ Leetify)
 
 ## 0. ชื่อ
 | ชื่อ | ใช้ที่ไหน | ความหมาย |
@@ -79,7 +79,7 @@ Rating รวม (แบบ 1.70 ของ FACEIT) ยังไม่ทำ จ�
 ### 3.1 ΔWP ของ event (แยกส่วนเวลาออก, owner 2026-11-05)
 ใช้แถวของ `build_wp_states(p)` เป็นลำดับ state ของรอบ: freeze_end → e1 … en → round_end; `wp_start` = WP ของ freeze_end
 - `wp_pre(e)` = WP ของ state ก่อนหน้า แต่เลื่อนนาฬิกาไปที่ tick ของ e (`time_left_s` ก่อนหน้า − Δtick/tickrate; `ct_can_defuse` คิดใหม่จากเวลา) · `equip_diff_k` ใช้ของ state ก่อนหน้า · state ก่อนหน้าที่ตัดสินแล้วใช้ rule-fixed
-- `delta_time = wp_pre(e) − wp_after(e ก่อนหน้า)` → แถว part/category `time`, steam_id = null (คู่ T +Dt / CT −Dt) ไม่ให้ผู้เล่นคนไหน
+- `delta_time = wp_pre(e) − wp_after(e ก่อนหน้า)` → แถว part/category `time`: default `time_credit: survivors` = คนที่รอดก่อน e ของแต่ละฝั่งแบ่งเท่ากัน (T +Dt / CT −Dt; ไม่มีคนรอด → ทั้งทีม) · `none` = steam_id null ไม่ให้ใคร (§3.7)
 - `delta_event = wp_after(e) − wp_pre(e)` → แบ่งตาม §3.2
 - round end: `delta = outcome − wp_after(event สุดท้าย)` (ไม่มีส่วนเวลาแยก)
 - เหตุผล: model มี `ct_can_defuse` ทำให้ WP กระโดด (เช่น 59% → 91%) ตอน C4 ข้าม 10s ถ้าไม่แยก คน kill ถัดไปจะได้เครดิตของเวลาไปด้วย
@@ -122,7 +122,7 @@ part อื่น: damage ของเพื่อน (ไม่ใช่ attack
 
 ### 3.4 Output
 - `rating_events` (data-model §2.4) → `data/parsed/<demo>/rating_events.parquet`: 1 แถวต่อ (state, part, ผู้รับ) คอลัมน์ `match_id, round_no, seq, sub, tick, event_type, event_ref, part, steam_id (nullable), is_bot, side, category, delta, wp_pre, wp_after`
-- `player_round_ratings.parquet` (match_id, round_no, steam_id, side, rating = Σ delta ของผู้เล่นในรอบ, ไม่รวม time/disconnect) = ค่าของ `player_rounds.rating` (ยังไม่ merge เข้า `build_player_rounds`)
+- `player_round_ratings.parquet` (match_id, round_no, steam_id, side, rating = Σ delta ของผู้เล่นในรอบ รวมส่วน time ของ survivors, ไม่รวม disconnect) = ค่าของ `player_rounds.rating` (ยังไม่ merge เข้า `build_player_rounds`)
 - metric `impact` / `impact_ct` / `impact_t` ใน registry: `aggregation: mean` ต่อรอบที่เล่น, scopes `[all, CT, T]`, `status: custom`, unit `pp` (×100 แล้ว); ข้ามแมตช์ใช้ Σ rating / Σ รอบ · join ใน `compute_match_metrics` (truth ไม่มี key `impact` → ไม่ gate)
 - invariant (`check_invariants`, CLI exit 1 ถ้า fail) ต่อรอบ ±1e-9: (ก) Σ แถวฝั่ง T (รวม time/disconnect) = t_won − wp_start (ข) Σ T + Σ CT = 0 (ค) Σ ผู้เล่น/bot ฝั่ง T + Σ time/disconnect ฝั่ง T = (ก) และไม่มีแถว steam_id null นอก time/disconnect/bot · ต่อ state: Σ แถว T = wp_after − wp_pre
 
@@ -131,7 +131,7 @@ part อื่น: damage ของเพื่อน (ไม่ใช่ attack
 - เทียบ FACEIT Swing (dust2-8020514f, 10 คน, % ต่อรอบ): Pearson All +0.88 / T +0.92 / CT +0.89 · Spearman All +0.78 / T +0.86 / CT +0.94 · MAE 2.5 / 3.0 / 3.1 pp · ผลรวมทีมชนะ ฝั่ง T ours +38.6 vs FACEIT +39.2, ฝั่ง CT +7.0 vs +11.4 · ลำดับในทีมชนะ ρ 0.90 (สลับแค่ ch4dum/o2donggg), ทีมแพ้ ρ 0.30
 - ส่วนที่ไม่มีใครได้ (time) = −4.0 pp ต่อรอบสำหรับ T (เวลาเดินทำให้ T เสีย) ทำให้ผลรวมทีมเราน้อยกว่า FACEIT (ทีมชนะ All +16.3 vs +19.6)
 
-### 3.6 ทดลอง §6.6 ช่วงแรก (2026-11-05, ยังไม่เปลี่ยน default)
+### 3.6 ทดลอง §6.6 (2026-11-05)
 - config ใหม่ `time_credit: none | survivors` (default `none`; CLI `--time-credit`): `survivors` = delta_time ของแต่ละ state แบ่งเท่ากันให้คนที่ยังรอดก่อน event ของแต่ละฝั่ง (T +Dt, CT −Dt; ไม่มีคนรอด → ทั้งทีม) category `time` · invariant ผ่านทั้ง 2 โหมดใน 4 แมตช์
 - FACEIT 8020514f (10 คน, pp ต่อรอบ):
 
@@ -160,6 +160,16 @@ part อื่น: damage ของเพื่อน (ไม่ใช่ attack
   - **รวม 2 แมตช์ (20 คน)** none → survivors: Pearson All 0.916 → 0.929, T 0.921 → 0.920, CT 0.905 → 0.916 · MAE All 1.62 → 1.58, T 2.71 → 2.57, CT 2.60 → 2.11 ⇒ survivors ดีกว่าเล็กน้อยโดยรวม ยังไม่ชัดพอจะเปลี่ยน default
   - ผลรวมทีมแยกฝั่งต่าง FACEIT มาก: team 1 ฝั่ง T ours +8.4 (none) vs FACEIT −3.1, ฝั่ง CT +2.3 vs +13.6 → WP เริ่มรอบของ FACEIT บน mirage ให้ T สูงกว่าเรา ~11 pp ต่อรอบ (ของเรา map_mirage เป็นลบ) ทั้งที่ All ตรง (+5.3 vs +5.3)
 
+### 3.7 Decision: `time_credit = survivors` (owner, 2026-11-05)
+- default ใน `credit.yaml` = `survivors` (`--time-credit none` ยังใช้ได้)
+- เหตุผล: รวม 2 แมตช์ FACEIT (20 คน) Pearson All 0.929 vs 0.916, MAE 1.58 vs 1.62 และผลรวมทีมใกล้ FACEIT กว่า (dust2 ทีมชนะ +19.76 vs FACEIT +19.57; none +16.28) · Leetify สองโหมดสูสี (r 0.99 / 0.89–0.91 / 0.98)
+- invariant ผ่านทุกแมตช์ (FACEIT 2 + validation 3) ด้วย default ใหม่
+
+### 3.8 Known issues (ค้าง)
+- **WP mirage ต่างจาก FACEIT ~11 pp ต่อรอบฝั่ง T** (mirage-4cb4009a: ผลรวมทีม 1 ฝั่ง T ours +6.0 vs FACEIT −3.1, ฝั่ง CT +3.7 vs +13.6, ทั้งที่ All ตรง) → WP เริ่มรอบของเราให้ T บน mirage ต่ำกว่า FACEIT · รอ demo mirage เพิ่ม (ตอนนี้ 6 แมตช์ train)
+- `ct_has_kit` ยังไม่มีใน wp_states (`ct_can_defuse` ใช้ ≥ 10s)
+- damage share 0.30 / ราคา death ยังไม่ปรับ (ส่วนต่างหลักกับ FACEIT, §3.6) รอข้อมูลเพิ่ม
+
 ## 4. RWS
 - รอบที่ทีมชนะ: 100 แต้มแบ่งตามสัดส่วน damage ใส่ศัตรูในรอบนั้น (ไม่นับ team damage)
 - **damage = sequential** ไม่ใช่ `dmg_effective`: แต่ละ hit cap ที่ HP ที่เหลือก่อนโดน (`min(dmg_raw, HP_remaining)`) เรียงตามลำดับ event ต่อ (รอบ, เหยื่อ) ส่วน `dmg_effective` รวม hit ใน tick ที่เหยื่อตายเป็นกลุ่มเดียว ("killing tick = hits รวมกัน = HP ก่อน tick") ซึ่งทำให้ RWS ต่างจาก FACEIT ใน kill tick ที่มีหลาย hit พร้อมกัน (shotgun / หลายคนยิงตายใน tick เดียว)
@@ -186,7 +196,7 @@ part อื่น: damage ของเพื่อน (ไม่ใช่ attack
 | (ช) ไม่ cap (dmg_raw) | 25 | 30 |
 
   ⇒ ไม่มีกฎที่ได้ 30/30 ทั้ง 2 แมตช์ ไม่แก้ rws.py · (จ) ดีขึ้นนิดแต่ max แย่ลง ต้องมีแมตช์ที่ 3 หรือ per-round truth
-- `status: exact` เมื่อตรง FACEIT ครบ 10 คน × 3 scope (ตอนนี้ 1 แมตช์ 30/30 → ยัง `calibrating`; เลื่อนเป็น exact เมื่อแมตช์ที่ 2 ตรง)
+- `status: exact` เมื่อตรง FACEIT ครบ 10 คน × 3 scope ทุกแมตช์ · **ตอนนี้ `calibrating`:** dust2-8020514f 30/30 แต่ mirage-4cb4009a ต่างจาก FACEIT ≤ 0.16 (10/30 ช่อง) ยังหากฎไม่เจอ รอแมตช์ FACEIT ที่ 3
 
 ## 5. Validation
 | สิ่งที่เช็ค | truth | เกณฑ์ |
@@ -203,4 +213,4 @@ part อื่น: damage ของเพื่อน (ไม่ใช่ attack
 3. `wp_states` builder + CLI `wp-states DEMO...` (ยังไม่ train)
 4. Training + รายงาน §2.4 ✅ (2026-11-05, §2.2.1)
 5. Credit assignment + `rating_events` + metric `impact` + invariant tests ✅ (2026-11-05, §3.5)
-6. เทียบกับ FACEIT Swing / Leetify, ปรับ config, อัปเดต roadmap
+6. เทียบกับ FACEIT Swing / Leetify, ปรับ config, อัปเดต roadmap ✅ (2026-11-05, §3.6–3.7) → **Phase 2 ปิด**

@@ -5,8 +5,9 @@ kill_split:
   damage: 0.30        # killer's team (attacker included) by sequential damage to the victim
   flash_assist: 0.15  # flash assister (enemy of the victim)
   traded_death: 0.20  # teammate(s) whose death this kill traded
-# delta_time (clock moving between events): none = nobody (steam_id null rows, default);
-# survivors = alive players of each side share it (T +Dt, CT -Dt; whole team if none alive).
-time_credit: none
+# delta_time (clock moving between events): survivors = alive players of each side share it
+# (T +Dt, CT -Dt; whole team if none alive; default since 2026-11-05, impact-spec §3.7);
+# none = nobody (steam_id null rows).
+time_credit: survivors
 # Several kills in one tick share one wp_states row: split its ΔWP equally per kill.
 multi_kill_same_tick: equal_split

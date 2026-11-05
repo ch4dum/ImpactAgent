@@ -52,19 +52,24 @@
 
 ---
 
-## ⏳ Phase 2: Ratings (สูตรของเราเอง ไม่ใช้ชื่อ Leetify)
+## ✅ Phase 2: Ratings (สูตรของเราเอง ไม่ใช้ชื่อ Leetify) — ปิดแล้ว (2026-11-05)
 - [x] **`wp_states` builder + CLI `wp-states`** (impact-spec §6.3, ยังไม่ train, 2026-11-05): 1 แถว/state (freeze end, kill, plant, defuse, explode, round end) · features `t_alive`/`ct_alive`, `bomb_planted`, `time_left_s`, `equip_diff_k`, `map`, label `t_won` · column `trainable` แยกแถวที่ model ต้องทาย vs rule-fixed · ตัด validation match ด้วย fingerprint (map + จำนวนรอบ + สกอร์ + ชุด steam_id) · สร้าง `data/train_demos/manifest.csv` อัตโนมัติ ผล: 30/34 แมตช์ (ตัด 4 validation, 0 parse fail), 713 รอบ, 6,285 state (4,972 trainable); แมตช์/แมพ dust2 15 · mirage 6 · cache 4 · ancient 3 · inferno 2
 - [x] **WP model v1 + CLI `train-wp`** (impact-spec §6.4 / §2.2.1, 2026-11-05): logistic L2 บน feature ที่ standardize (mean/std ใน `wp_model_v1.json`, predict numpy-only, sklearn เฉพาะ `train_wp.py` / extra `[train]`) · GroupKFold 5 ตามแมตช์ · ชุด D (A + map + alive_prod + ct_can_defuse) C=1: Brier 0.1472 log loss 0.4491 vs baseline 0.1638 / 0.4955 · reliability ห่าง ≤ 0.03 ทุกช่อง · FACEIT round-start WP T 62.3% (≈61) CT 54.4% (≈55)
 - [x] **Impact credit + `rating_events` + metric `impact` + CLI `impact`** (impact-spec §3 / §6.5, 2026-11-05): แยก ΔWP จากเวลา (แถว `time` ไม่ให้ใคร) · kill แบ่ง 0.35/0.30/0.15/0.20 (`credit.yaml`, damage แบบ sequential จาก rws) · disconnect ไม่ให้ใคร · 9 หมวด + time + disconnect · invariant ผ่าน 4 แมตช์ (FACEIT, inferno, mirage, dust2) · เทียบ FACEIT Swing: Pearson All 0.88 / T 0.92 / CT 0.89, MAE 2.5 pp
 - [x] Impact §6.6 ช่วงแรก (2026-11-05): config `time_credit: none | survivors` + CLI `--time-credit` (default none) · FACEIT: survivors ดีกว่า (Pearson All 0.883 → 0.907, MAE 2.50 → 2.32, ผลรวมทีม +19.76 vs FACEIT +19.57) · Leetify truth มีแค่ `leetify_rating` รวม (ไม่มี breakdown): Pearson inferno 0.99, mirage 0.89–0.91, dust2 0.98 (impact-spec §3.6)
 - [x] FACEIT แมตช์ที่ 2 (mirage-4cb4009a, 2026-11-05): RWS off 10/30 (CT team b; สาเหตุยังไม่รู้ → rws คง calibrating) · Impact รวม 20 คน survivors Pearson All 0.929 / MAE 1.58 vs none 0.916 / 1.62 (impact-spec §3.6, §4)
 - [x] validate-faceit / impact --faceit: จับคู่ผู้เล่นด้วย `match_players` (2026-11-05): key `"aliases": {"ชื่อในเกม": "ชื่อ FACEIT"}` (ไม่บังคับ) → ชื่อตรง/ไม่สนตัวพิมพ์ → elimination ในทีม (เหลือ 1↔1, พิมพ์ "matched by elimination") → ไม่งั้น FAIL พร้อมรายชื่อ (exit 1)
-- [ ] mirage-4cb4009a-faceit.json ต้องใส่ `"aliases": {"krvmz": "krvmzy", "Riend-": "RESURECTON-"}` (owner; ทั้ง 2 คนอยู่ทีมเดียวกัน elimination ไม่พอ)
-- [ ] RWS mirage CT team b off 10/30: ลองกฎหมดเวลา / defuse / disconnect / self-damage แล้วไม่มีกฎที่ได้ 30/30 ทั้ง 2 แมตช์ (impact-spec §4)
-- [ ] Impact: ตัดสิน `time_credit` default + damage share / ราคา death เมื่อมี FACEIT / Leetify rating เพิ่ม (ตอนนี้ 1 + 3 แมตช์)
-- [ ] Aim / Utility / Positioning Score: แยกตามกลุ่มปืน (sniper / rifle / pistol) ไม่ให้ metric ที่เป็น n/a ดันคะแนน และบอกความมั่นใจตามขนาดตัวอย่าง (บทเรียนจาก Aim 100 ของ Leetify ในแมตช์ที่ใช้ AWP)
+- [x] mirage-4cb4009a-faceit.json ใส่ `"aliases"` แล้ว (owner) → validate-faceit / impact จับคู่ครบ 10 คน
+- [x] **Impact §6.6 ปิด: `time_credit` default = `survivors`** (2026-11-05, impact-spec §3.7): FACEIT 2 แมตช์ Pearson All 0.929 vs 0.916, MAE 1.58 vs 1.62; invariant ผ่าน 5 แมตช์
 
-## ⏳ Phase 3: Backend
+**งานค้างของ Phase 2** (ไม่ block Phase 3):
+- [ ] RWS → `exact`: mirage-4cb4009a ต่าง ≤ 0.16 (CT team b 10/30), ไม่มีกฎที่ได้ 30/30 ทั้ง 2 แมตช์ (impact-spec §4) รอแมตช์ FACEIT ที่ 3
+- [ ] `ct_has_kit` ใน wp_states (ตอนนี้ `ct_can_defuse` ใช้ ≥ 10s)
+- [ ] WP mirage ต่าง FACEIT ~11 pp/รอบ ฝั่ง T (impact-spec §3.8) รอ demo mirage เพิ่ม
+- [ ] เก็บ demo train ถึง 100 แมตช์ (ตอนนี้ 30) แล้ว train WP ใหม่ + ทบทวน damage share / ราคา death
+- [ ] (เลื่อน) Aim / Utility / Positioning Score: แยกตามกลุ่มปืน (sniper / rifle / pistol) ไม่ให้ metric ที่เป็น n/a ดันคะแนน และบอกความมั่นใจตามขนาดตัวอย่าง (บทเรียนจาก Aim 100 ของ Leetify ในแมตช์ที่ใช้ AWP)
+
+## ▶️ Phase 3: Backend — current (เริ่ม 2026-11-05)
 - [ ] Supabase: Postgres (ตาราง core) + Auth (Steam OpenID ผ่าน backend เรา)
 - [ ] เก็บ event ละเอียดเป็น Parquet; ไฟล์ `.dem` ลบทิ้งหลัง parse
 - [ ] Upload: presigned URL รับ `.dem.bz2` → queue → worker (parse + metrics)
@@ -134,4 +139,5 @@
 | Impact damage share | damage แบบ sequential (`rws._sequential_enemy_damage`) ไม่ใช่ `dmg_effective` (owner, 2026-11-05) |
 | Impact disconnect | death จาก `by_disconnect` ไม่ให้ใคร (แถว null, category `disconnect`) (owner, 2026-11-05) |
 | Impact units | `rating_events.delta` = fraction; ×100 จุดเดียวที่ `credit.PCT` (impact_metrics + CLI); registry unit `pp` (2026-11-05) |
+| Impact time credit | default `time_credit: survivors` (คนรอดแต่ละฝั่งแบ่ง delta_time) แทน `none`: FACEIT 2 แมตช์ Pearson 0.929 vs 0.916, MAE 1.58 vs 1.62, ผลรวมทีมใกล้กว่า; Leetify สูสี (owner, 2026-11-05) |
 | Impact plant/explode | planter ได้ D, CT ที่รอดเสียแบ่งเท่ากัน (spec เดิมไม่ระบุฝั่งที่เสีย; ต้องมีเพื่อ zero-sum) (2026-11-05) |

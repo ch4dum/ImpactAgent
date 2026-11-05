@@ -62,7 +62,7 @@
 | survived, was_traded | bool |
 | kast | bool (K or A or S or T) |
 | unused_utility_value | มูลค่าระเบิดที่ถือตอนตาย (null ถ้ารอด) |
-| rating | Impact ของรอบ = Σ `rating_events.delta` ของผู้เล่น (fraction, ไม่รวม time/disconnect) ตอนนี้อยู่ใน `player_round_ratings.parquet` |
+| rating | Impact ของรอบ = Σ `rating_events.delta` ของผู้เล่น (fraction, รวมส่วน time ของ survivors, ไม่รวม disconnect) ตอนนี้อยู่ใน `player_round_ratings.parquet` |
 
 ### 2.3 Event level (Parquet)
 **`kills`** (เก็บใน Postgres ด้วย เพราะใช้บ่อย)
@@ -112,9 +112,9 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, **fla
 | tick | int64 | |
 | event_type, event_ref | string | `kill` · `plant` · `defuse` · `explode` · `round_end` (ref จาก wp_states) |
 | part | string | `kill` · `damage` · `flash_assist` · `traded_death` · `death` · `opponent_split` · `plant` · `defuse` · `explode` · `round_end` · `time` · `disconnect` |
-| steam_id | string, nullable | null = `time` / `disconnect` / bot |
+| steam_id | string, nullable | null = `disconnect` / bot / `time` เฉพาะเมื่อ `time_credit: none` (default `survivors` ให้คนรอด) |
 | is_bot | bool | |
-| side | string | `T`/`CT` (แถว time/disconnect มาเป็นคู่ T +D / CT −D) |
+| side | string | `T`/`CT` (แถวที่ steam_id null มาเป็นคู่ T +D / CT −D) |
 | category | string | `opening_duel` · `mid_round_kd` · `clutch` · `afterplant` · `retake` · `damage_assist` · `flash_assist` · `traded` · `enemy_saving` · `time` · `disconnect` |
 | delta | float64 | **fraction** ของการชนะรอบ มุมมองฝั่งของแถว (×100 ทำที่ `impact_metrics` เท่านั้น) |
 | wp_pre, wp_after | float64 | WP ของ T ก่อน/หลัง event (debug + invariant) |

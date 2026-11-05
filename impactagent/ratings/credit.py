@@ -2,7 +2,7 @@
 
 For every state e after freeze end (wp_states order):
   wp_pre(e)    = WP of the state BEFORE e, with the clock moved to e's tick
-  delta_time   = wp_pre(e) - wp_after(previous)  -> `time` rows (no player)
+  delta_time   = wp_pre(e) - wp_after(previous)  -> `time` rows (survivors share it; none: no player)
   delta_event  = wp_after(e) - wp_pre(e)         -> split between players (§3.2)
   round end    : delta = outcome - wp_after(last event) (no separate time part)
 
@@ -11,8 +11,8 @@ row's delta is from the row's own side (T rows +D, CT rows -D for a T-side chang
 The only ×100 (to % per round) is `PCT`, applied in `impact_metrics` and the CLI tables.
 
 Per round the rows are zero-sum between T and CT, and the T rows sum to t_won - wp_start
-(`check_invariants`). Rows with steam_id = null are `time` (with `time_credit: none`, the
-default; `survivors` gives them to the players alive), `disconnect` (a death by leaving
+(`check_invariants`). Rows with steam_id = null are `time` (only with `time_credit: none`;
+the default `survivors` gives them to the players alive), `disconnect` (a death by leaving
 the server is nobody's play) and bot rows (`is_bot`).
 """
 
@@ -33,9 +33,9 @@ from impactagent.ratings.wp_states import _trainable, build_wp_states
 CFG_PATH = Path(__file__).with_name("credit.yaml")
 PCT = 100.0  # fraction -> % per round; used only by impact_metrics and the CLI
 TOL = 1e-9
-# credit.yaml `time_credit`: none = time rows have no player (steam_id null, default);
-# survivors = each side's players alive before the event share delta_time equally (whole
-# team if nobody is alive), category `time`.
+# credit.yaml `time_credit`: survivors (default) = each side's players alive before the event
+# share delta_time equally (whole team if nobody is alive), category `time`; none = time rows
+# have no player (steam_id null).
 TIME_CREDIT_MODES = ("none", "survivors")
 
 CATEGORIES = (
@@ -113,7 +113,7 @@ def build_rating_events(p, states: pd.DataFrame | None = None, model: dict | Non
     states = states.reset_index(drop=True)
     wp_after, wp_pre = _state_wps(states, model, p.tickrate)
     split = cfg["kill_split"]
-    time_mode = cfg.get("time_credit", "none")
+    time_mode = cfg.get("time_credit", "survivors")
     if time_mode not in TIME_CREDIT_MODES:
         raise ValueError(f"time_credit must be one of {TIME_CREDIT_MODES}, got {time_mode!r}")
 

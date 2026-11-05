@@ -50,7 +50,7 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 | `data/parsed/` | Parser outputs (Parquet). Gitignored. |
 
 ## Current status (2026-11-05)
-Phase 0 (research) and data model v0.1 are done. Full plan and checklist: `docs/roadmap.md`.
+Phase 0 (research), data model v0.1, Phase 1 (metrics) and **Phase 2 (ratings) are done**; **current: Phase 3 (backend)**. Full plan and checklist: `docs/roadmap.md`.
 
 - **CLI:** `inspect`, `parse`, `validate`, `validate-all`, `validate-faceit`, `visibility`, `wp-states`, `train-wp`, `impact`. `parse_demo` reads `.dem` / `.dem.bz2` / `.dem.gz` (`.dem.zst` with zstandard), caps the decompressed demo at 1 GiB and parses in a child process killed after 300 s (`MAX_DEMO_BYTES`, `PARSE_TIMEOUT_SECONDS` in `constants.py`).
 - **Metrics vs Leetify:** core (General + Utility + trade succeeded + opening traded % + shots fired / accuracy / head accuracy) **inferno 305/305, mirage 350/350** (player × metric); opening duels 37/37 rounds; clutches 43/43 (incl. disconnect deaths). Trade opportunity / attempt and 7 Aim metrics (spotted accuracy, spray, counter-strafe, first bullet, TTD, TTK, crosshair) are `calibrating`, not gating. Rule-by-rule evidence (2 matches / 1 match / hypothesis): `docs/metrics/leetify-metrics-spec.md` §8.
@@ -58,7 +58,11 @@ Phase 0 (research) and data model v0.1 are done. Full plan and checklist: `docs/
 - **Known exceptions:** one entry per (pair, player, metric) with a reason, never a tolerance; validate prints them and warns STALE when a cell matches again.
 - **Visibility:** `impactagent/visibility/` (raycast default, 8 target points `TARGET_LAYOUT`, spotted switchable): normal kills seen inferno 72/72, mirage 150/152; lag window fixed 7 ticks (ping does not explain the rewind); smoke spheres R 144 / +32z / 0.5 s bloom; FOV 50°. Spec §0 + §8.
 - **Metric registry:** `impactagent/metrics/registry.yaml`, 56 metrics (42 exact, 13 calibrating, 1 custom: `impact`). Every finished metric gets an entry; `validate-all` checks it and reads `calibrating` from it.
-- **Phase 2 (ratings, `docs/metrics/impact-spec.md`):** RWS (`impactagent/metrics/rws.py`, sequential damage) matches FACEIT 30/30 ±0.01 on 1 match (`validate-faceit`, still `calibrating`). `wp_states` (`python -m impactagent wp-states data/train_demos`) -> `data/parsed/wp_states.parquet`: 30 matches, 639 rounds. WP model v1 (`python -m impactagent train-wp data/parsed/wp_states.parquet`, needs `.[train]`): standardized L2 logistic, feature set D, CV log loss 0.449 vs baseline 0.496, FACEIT round-start WP T 62% / CT 54% (≈61 / 55). Prediction `impactagent/ratings/wp_model.py` (numpy only, model `wp_model_v1.json`). Impact credit (`impactagent/ratings/credit.py`, `python -m impactagent impact DEMO [--faceit JSON --breakdown]`): `rating_events` + metric `impact` (custom, pp per round), invariants pass on 4 matches, Pearson 0.88 vs FACEIT Swing. Next: compare with Leetify breakdown / tune config (spec §6.6).
+- **Phase 2 (ratings, done 2026-11-05, `docs/metrics/impact-spec.md`):**
+  - RWS (`impactagent/metrics/rws.py`, sequential damage): FACEIT dust2-8020514f 30/30, mirage-4cb4009a off ≤ 0.16 (10/30, cause unknown) → still `calibrating`. `validate-faceit` matches players by name / truth `"aliases"` / elimination and fails on any unmatched name.
+  - WP model v1: `wp-states` (30 train matches, 639 rounds) → `train-wp` (needs `.[train]`), standardized L2 logistic, feature set D, CV log loss 0.449 vs baseline 0.496; predict in `impactagent/ratings/wp_model.py` (numpy only).
+  - Impact (`impactagent/ratings/credit.py`, `python -m impactagent impact DEMO [--faceit JSON --breakdown --time-credit none|survivors]`): `rating_events` + custom metric `impact` (pp per round); default `time_credit: survivors`; invariants pass on 5 matches; vs FACEIT Swing (20 players) Pearson 0.93, vs Leetify rating 0.89-0.99.
+  - Open (not blocking): RWS exact, `ct_has_kit` in wp_states, WP mirage ~11 pp/round T bias vs FACEIT, train demos to 100.
 - **Branches:** v2 became `main` and the old `main` became `v1-draft` (2026-11-05); main's history was rewritten the same day.
 
 Validate (run after every metric/parser change; all pairs and the registry must stay green):
@@ -66,7 +70,10 @@ Validate (run after every metric/parser change; all pairs and the registry must 
 python -m impactagent validate-all
 ```
 
-### Next steps (Phase 1 in `docs/roadmap.md`)
+### Next steps (Phase 3 in `docs/roadmap.md`)
+1. Backend: Supabase (Postgres core tables + Steam auth), Parquet event storage, upload → queue → worker (parse + metrics + impact), FastAPI.
+
+### Open items from Phase 1 (not blocking)
 1. Trade opportunity / attempt: visibility-based definitions did not generalize (raycast 23/40 inferno, 11/40 mirage holdout vs current 22/40, 25/40); kept the current one. Needs per-death truth (spec §3).
 2. Aim calibrating metrics: our TTD / crosshair are below Leetify for every player (we see enemies later). 8 target points cut the TTD bias from -173 / -143 to -125 / -83 ms (spec §1); try a bigger hitbox before changing the default. Crosshair barely moves, so its definition differs. Spray accuracy is probably not hits/shots.
 3. Round buy type + Map Zones.
