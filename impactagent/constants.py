@@ -42,6 +42,9 @@ THROWN_GRENADE_GRACE_SECONDS = 1.0
 # Damage weapons that count as utility damage.
 HE_DAMAGE_WEAPONS = {"hegrenade"}
 FIRE_DAMAGE_WEAPONS = {"inferno", "molotov", "incgrenade"}
+# Molotov damage metric = fire only. The bottle hitting a player ("molotov" / "incgrenade", 1 HP)
+# is not counted (dust2-85507dfb: gxmxi r14, 54 -> 53).
+MOLOTOV_FIRE_WEAPONS = {"inferno"}
 NON_GUN_WEAPONS = {"knife", "knife_t", "bayonet", "taser", "c4", "world", "worldspawn"} | set(GRENADE_WEAPONS) | FIRE_DAMAGE_WEAPONS
 
 # Leetify: enemies blinded for less than this are ignored.
@@ -69,6 +72,19 @@ EYE_HEIGHT_STANDING = 64.0
 # Target points on the other player: head (= his eye height), chest, feet. Any clear ray = seen.
 TARGET_CHEST_FRACTION = 0.72  # chest z as a fraction of eye height
 TARGET_FEET_OFFSET = 8.0  # above origin, so the ray does not graze the floor
+# Target point layouts: (fraction of eye height, extra z, sideways offset perpendicular to the
+# observer's line of sight). Points are tried in order; the first clear ray = seen.
+_F = TARGET_FEET_OFFSET
+TARGET_LAYOUTS = {
+    "3": [(1.0, 0, 0), (TARGET_CHEST_FRACTION, 0, 0), (0, _F, 0)],
+    "8": [(1.0, 0, 0), (0.85, 0, 0), (TARGET_CHEST_FRACTION, 0, 0), (0.5, 0, 0), (0.25, 0, 0), (0, _F, 0),
+          (0.8, 0, 14), (0.8, 0, -14)],
+    "24": [(1.0, 0, 0), (0.9, 0, 0), (0.8, 0, 0), (0.7, 0, 0), (0.6, 0, 0), (0.45, 0, 0), (0.3, 0, 0), (0, _F, 0),
+           (1.0, 0, 5), (1.0, 0, -5), (0.85, 0, 10), (0.85, 0, -10), (0.8, 0, 16), (0.8, 0, -16),
+           (0.65, 0, 16), (0.65, 0, -16), (0.5, 0, 12), (0.5, 0, -12), (0.35, 0, 8), (0.35, 0, -8),
+           (0.2, 0, 8), (0.2, 0, -8), (0, _F, 8), (0, _F, -8)],
+}
+TARGET_LAYOUT = "8"  # 8 vs 24 points (dense capsule): TTD bias -125/-83/-105 vs -139/-70/-95 ms (inferno/mirage/dust2), 24 = ~2.7x rays
 # Lag compensation: the target counts as seen if his position at any of the last N ticks is
 # in sight. The needed rewind does NOT follow the observer's ping (rank corr 0.01 on 64 hits
 # in 2 matches), so a fixed window is used. 7 = largest rewind the 224 normal kills needed.
@@ -95,6 +111,9 @@ PISTOLS = {"glock", "hkp2000", "usp_silencer", "p250", "elite", "fiveseven", "te
 SHOTGUNS = {"nova", "xm1014", "sawedoff", "mag7"}
 MACHINE_GUNS = {"m249", "negev"}
 GUNS = RIFLES | SNIPERS | SMGS | PISTOLS | SHOTGUNS | MACHINE_GUNS
+# Weapons whose shots / hits feed the aim tables. Taser counts in shots_fired (dust2-85507dfb: mojo
+# 1 taser shot = the missing shot); whether a taser HIT counts is unknown (no taser hit yet).
+AIM_WEAPONS = GUNS | {"taser"}
 # Max running speed (units/s, unscoped) per weapon, CS2 items_game (VERIFY).
 WEAPON_MAX_SPEED = {
     "ak47": 215, "m4a1": 225, "m4a1_silencer": 225, "famas": 220, "galilar": 215, "aug": 220, "sg556": 210,

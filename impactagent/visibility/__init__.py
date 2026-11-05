@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from impactagent.constants import LAG_COMP_WINDOW_TICKS, VISIBILITY_FOV_DEG
+from impactagent.constants import LAG_COMP_WINDOW_TICKS, TARGET_LAYOUT, VISIBILITY_FOV_DEG
 from impactagent.visibility.geometry import angle_deg, eye, target_points, view_dir
 from impactagent.visibility.smoke import SmokeIndex
 from impactagent.visibility.states import TickStates
@@ -91,8 +91,9 @@ class RaycastBackend(VisibilityBackend):
     name = "raycast"
 
     def __init__(self, mesh, smokes: SmokeIndex | None = None, fov_deg: float | None = VISIBILITY_FOV_DEG,
-                 lag_window: int = LAG_COMP_WINDOW_TICKS):
+                 lag_window: int = LAG_COMP_WINDOW_TICKS, layout: str | list = TARGET_LAYOUT):
         self.mesh = mesh
+        self.layout = layout
         self.smokes = smokes
         self.fov_deg = fov_deg
         self.lag_window = lag_window
@@ -120,7 +121,7 @@ class RaycastBackend(VisibilityBackend):
             t = states.get(tt - d, target)
             if t is None or not t[6]:
                 continue
-            for p in target_points(t):
+            for p in target_points(t, a, self.layout):
                 if view is not None and angle_deg(a, p, view) > self.fov_deg:
                     continue
                 if active and self.smokes.blocks(tick, a, p, active):

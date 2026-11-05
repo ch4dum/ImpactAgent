@@ -72,7 +72,7 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash
 
 **`death_inventory`**: match_id, tick, steam_id, inventory (list ชื่อ item), active_weapon. หนึ่งแถวต่อการตาย (เฉพาะคนที่ตาย ณ tick นั้น อ่านจาก tick − 1). ใช้คิด unused utility
 
-**`shots`**: match_id, round_no, tick, shooter_id, weapon, **weapon_class** (`rifle` · `sniper` · `smg` · `pistol` · `shotgun` · `mg` · `melee` · `other`), **speed_2d**, ducking, scoped, **died_this_tick**, **aim_shot** (นัดที่นับใน accuracy: ปืน ไม่ใช่ลูกซอง ไม่ใช่ tick ที่คนยิงตาย), hit, hit_head (ทุก hurt ของนัดเป็นหัว), hit_victim_id (nullable), enemy_spotted (visibility), **spray_id**, shot_index_in_spray, spray_len, first_bullet, engagement_id (nullable). (pitch / yaw / xyz ยังไม่เก็บ)
+**`shots`**: match_id, round_no, tick, shooter_id, weapon, **weapon_class** (`rifle` · `sniper` · `smg` · `pistol` · `shotgun` · `mg` · `melee` · `other`), **speed_2d**, ducking, scoped, **died_this_tick**, **aim_shot** (นัดที่นับใน accuracy: ปืน + taser ไม่ใช่ลูกซอง ไม่ใช่ tick ที่คนยิงตาย), hit, hit_head (ทุก hurt ของนัดเป็นหัว), hit_victim_id (nullable), enemy_spotted (visibility), **spray_id**, shot_index_in_spray, spray_len, first_bullet, engagement_id (nullable). (pitch / yaw / xyz ยังไม่เก็บ)
 
 **`grenades`**: match_id, round_no, entity_id, thrower_id, type (`flash`/`smoke`/`he`/`molotov`/`incendiary`/`decoy`), throw_tick, detonate_tick, detonate_xyz, detonate_place
 
@@ -233,7 +233,7 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash
 - **Parse safety:** .dem หลังแตก ≤ 1 GiB (หยุดแตกทันทีถ้าเกิน), parse ใน child process ที่ถูก kill เมื่อเกิน 300s; ไฟล์ temp ลบทุกกรณี (`impactagent/constants.py`)
 
 ## 6. Visibility
-`impactagent/visibility/`: `VisibilityBackend.sees(states, tick, observer, target)` สลับ backend ได้ (`spotted` / `raycast`). อ่าน state เฉพาะ tick ที่ query ต้องใช้ (`TickStates`) แล้วทิ้ง ไม่เก็บ tick data. Raycast: ตา = Z + 64 + `m_flDuckViewOffset` → หัว / อก / เท้าของเป้า, เป้าในตำแหน่งใดก็ได้ใน 7 tick ล่าสุด (lag), ไม่ผ่านควัน (`smokes`), อยู่ใน FOV 50° จากทิศที่มอง. เป้าที่ตายใน tick นั้นใช้ state ของ tick ก่อนหน้า. ค่าคงที่อยู่ใน `constants.py`
+`impactagent/visibility/`: `VisibilityBackend.sees(states, tick, observer, target)` สลับ backend ได้ (`spotted` / `raycast`). อ่าน state เฉพาะ tick ที่ query ต้องใช้ (`TickStates`) แล้วทิ้ง ไม่เก็บ tick data. Raycast: ตา = Z + 64 + `m_flDuckViewOffset` → จุดเป้า 8 จุดบนตัว (`TARGET_LAYOUT`), เป้าในตำแหน่งใดก็ได้ใน 7 tick ล่าสุด (lag), ไม่ผ่านควัน (`smokes`), อยู่ใน FOV 50° จากทิศที่มอง. เป้าที่ตายใน tick นั้นใช้ state ของ tick ก่อนหน้า. ค่าคงที่อยู่ใน `constants.py`
 
 ## 7. ยังไม่ตัดสินใจ
 - Trade window: ช่วง [3.48, 4.47) s ใช้ 4.0 (spec §3); นิยาม trade opportunity / attempt รอ visibility

@@ -58,6 +58,21 @@ Leetify **ไม่ใช้** radar spotted ของเกม (ช้าได
 - **TTD / TTK / crosshair ของเราต่ำกว่า Leetify ทุกคน** (TTD สั้นกว่า 16–390ms, crosshair เล็กกว่า ~2 เท่า) ทุก config ที่ลอง (gap 0–64 tick, FOV / ไม่มี FOV, ควัน / ไม่มีควัน, ตัด TTD สั้น, mean แทน median) จึงน่าจะมาจาก **first seen ของเราช้ากว่า** ไม่ใช่สูตร. สงสัย: mesh ของ awpy (physics) มี player clip / prop ที่ไม่บังสายตาจริง หรือ Leetify ใช้ hitbox ที่ใหญ่กว่า 3 จุดของเรา (ลองเพิ่มจุด ±8–16u แล้วไม่ดีขึ้นใน spotted accuracy)
 - **Spray accuracy ของ Leetify ไม่น่าใช่ hit ÷ นัด**: inferno yyh 0.83 ทั้งที่ accuracy รวม 0.11 และ spotted 0.51 ลองแบบ "spray ที่โดน ≥ k ครั้ง" แล้วก็ไม่ตรง อาจวัด recoil control จากมุม (ต้องใช้ aim punch)
 - **ทดลอง first_seen (ไม่ได้เปลี่ยนค่าหลัก):** TTD bias (ms) Inferno / Mirage: raycast 3 จุด (ใช้อยู่) −173 / −143 · `spotted` −338 / −337 · union raycast ∪ spotted −163 / −141 · **raycast 8 จุด** (หัว คอ อก เอว เข่า เท้า + ไหล่ซ้ายขวา ±14u) **−125 / −83** · union 8 จุด ∪ spotted −114 / −78. Crosshair bias −5.7 / −4.6 → −4.9 / −4.3 (แทบไม่เปลี่ยน) → TTD ห่างเพราะ hitbox ของเราเล็กไป (เพิ่มจุดแล้วเห็นเร็วขึ้น), ส่วน crosshair น่าจะเป็นที่นิยาม (ไม่ใช่ first_seen อย่างเดียว). `spotted` ของเกมช้ากว่า raycast มาก
+### นิยามของเรา (metric ที่ยัง `calibrating`, 2026-11-05)
+นิยามของ Leetify ยังทำซ้ำไม่ได้ จึงใช้นิยามของเราเองที่มีเหตุผลรองรับ (registry มี `note: our own definition`). visibility = raycast 8 จุด (`TARGET_LAYOUT`) + lag window 7 tick + ควัน + FOV 50°. ตัวเลข = ตรงราย player / bias เฉลี่ย (เรา − Leetify) / MAE บน inferno · mirage · dust2
+
+| metric | นิยามของเรา | เหตุผล | คลาดจาก Leetify |
+|---|---|---|---|
+| `accuracy_enemy_spotted` | นัด (`aim_shot`) ที่ยิงตอนมีศัตรูอย่างน้อย 1 คนที่ visibility บอกว่าเห็น → hit ÷ นัด | ตรงกับนิยามใน glossary; ส่วนต่างมาจาก visibility | 5/10 −0.021 0.032 · 1/10 −0.017 0.017 · 5/10 −0.010 0.013 |
+| `counter_strafe_pct` | rifle (ไม่นับ sniper) ยิงตอนเห็นศัตรู ไม่นั่ง; ดี = speed_2d < 34% ของ max speed ของปืน | glossary + ch4dum (AWP) เป็น null ทั้งสองฝั่ง | 4/9 +0.001 0.034 · 4/9 −0.002 0.042 · 4/10 +0.025 0.055 |
+| `spray_accuracy` | rifle spray ≥ 3 นัด (ห่างกัน ≤ 0.25s) นับตั้งแต่นัดที่ 3 ตอนเห็นศัตรู → hit ÷ นัด | วัดการคุม recoil หลังนัดแรกๆ; ของ Leetify น่าจะไม่ใช่ hit ÷ นัด (yyh inferno 0.83 แต่ accuracy รวม 0.11) | 0/7 −0.036 0.113 · 0/8 +0.014 0.040 · 0/9 +0.033 0.050 |
+| `first_bullet_accuracy` | นัดแรกหลังไม่ยิง ≥ 0.5s ตอนเห็นศัตรู ไม่นับ sniper → hit ÷ นัด | วัดความแม่นนัดแรกหลัง recoil reset | 1/10 −0.040 0.067 · 1/10 −0.029 0.038 · 2/10 −0.005 0.032 |
+| `ttd_ms` | engagement: สแกนย้อนจาก damage ขณะ A เห็น B (gap ≤ 8 tick, ≤ 2.5s) = first seen; median(first damage − first seen) ที่ < 1s | glossary (ตัด ≥ 1s, median) | 0/10 −125 130 · 1/10 −83 86 · 1/10 −105 108 ms |
+| `ttk_ms` | median(kill − first seen) ของ engagement ที่จบด้วย kill | first seen เดียวกับ TTD | 3/10 −60 98 · 2/10 −45 129 · 1/10 −141 149 ms |
+| `crosshair_placement_deg` | median มุมระหว่างทิศที่มองตอน first seen กับตอน first damage (ttd < 1s) | วัดว่าต้องลากเมาส์ไกลแค่ไหน; แบบ "มุมไปหาหัวตอน first seen" ลองแล้วไม่ใกล้กว่า (bias −5.5 / −4.6 / −5.8° vs −5.3 / −4.2 / −5.5°) | 0/10 −5.3 5.6 · 0/10 −4.2 4.2 · 0/10 −5.5 5.5 ° |
+
+- **TTD / TTK / crosshair ต่ำกว่า Leetify ทุกแมตช์**: first seen ของเราช้ากว่า. เพดานจุดเป้า (inferno / mirage / dust2, TTD bias ms): 3 จุด −173 / −143 / −170, **8 จุด −125 / −83 / −105**, capsule 24 จุด −139 / −70 / −95 (ray ×2.7) → จุดเป้าเพิ่มเกิน 8 ไม่ช่วย; ส่วนที่เหลือน่าจะมาจาก mesh (clip / prop) หรือการนิยาม first seen ของ Leetify
+- 8 จุดกับ kill: ปกติ 72/72 · 151/152 · 131/134 (3 จุด: 72/72 · 150/152 · 131/134); ผ่านควัน 1/7 · 2/7 · 4/6 (เดิม 0/7 · 2/7 · 4/6); wallbang เห็น 2/2 · 5/8 · 1/6 (เดิม 1/2 · 2/8 · 1/6)
 - Null: spray null เมื่อไม่มี spray ที่เข้าเกณฑ์; Leetify ให้ null ใน 3 กรณีที่เราได้ค่า (spray 2–4 นัด) → เกณฑ์ spray ของ Leetify เข้มกว่า
 
 ### 1.1 Accuracy (Enemy Spotted) ✅
@@ -150,6 +165,7 @@ Leetify **ไม่ใช้** radar spotted ของเกม (ช้าได
   | **นิยามเดิม** (`approximate_spotted_by` ทุก 4 tick, att = damage \| ยิงขณะเห็น < 20°) | 22/40 | **25/40** |
 
   ดีสุดบน Inferno เมื่อดูทีละ metric: TK opp 7/10, TD opp 6/10, TK att 9/10, TD att 7/10 แต่ไม่ generalize. Mirage: candidate นับ attempt **ขาด** (raycast −10 / −10, spotted −29 / −26 จาก truth 64 / 57) ส่วน opportunity เกิน (+16 / +7). Leetify ให้ attempt ÷ opportunity = 0.59 บน Inferno แต่ 0.90 บน Mirage จึงน่าจะนับ attempt กว้างกว่า "ยิงขณะเห็น" (เช่น ยิงอะไรก็ได้ หรือมี reposition / utility) และ opportunity ไม่ใช่แค่ "เห็นคนฆ่า". เคสที่ใช้แยก: inferno Wagga r8 ทำ damage ใส่คนฆ่าที่ 2.0s ก่อนเห็น (3.97s) แต่ Leetify ให้ TK attempt = 0. **คงนิยามเดิม + `calibrating`**; ต้องมี truth ราย death (ไม่ใช่แค่ยอดต่อ player) จึงจะแยกได้
+- **นิยามของเรา (calibrating):** trade window 4s, sample ทุก 4 tick ด้วย `approximate_spotted_by`; attempt = ทำ damage ใส่คนฆ่า หรือยิงขณะเห็นคนฆ่าและเป้าห่าง < 20°; opportunity = attempt หรือเพื่อนกับคนฆ่าเห็นกันทางใดทางหนึ่ง. เหตุผล: ดีที่สุดที่ generalize (นิยามที่ใช้ raycast แย่กว่าใน holdout). คลาด (ตรงราย player / MAE ครั้ง): TK opp 6/10 0.4 · 7/10 0.3 · 3/10 0.9; TK att 6/10 0.7 · 6/10 0.4 · 5/10 0.5; TD opp 5/10 0.5 · 4/10 0.7 · 3/10 1.0; TD att 5/10 0.6 · 8/10 0.2 · 4/10 0.8 (inferno · mirage · dust2)
 - **Opening traded %** = opening death ที่ถูก trade (succeeded) ÷ opening death ✅ (20/20)
 
 ---
@@ -192,6 +208,7 @@ kills, deaths, assists, HS kills, K/D, damage, ADR (`dpr`), KAST, rounds survive
 1. หาแมตช์ที่มีทั้ง `.dem` และข้อมูลบน Leetify. คู่ที่ใช้อยู่ (`python -m impactagent validate-all` รันทุกคู่):
    - `inferno-44a522c3.json` ↔ `scripts/demos/003852158461294936246_0991785667.dem.bz2` (Inferno 13:0) ใช้ calibrate
    - `mirage-65db631a.json` ↔ `scripts/demos/003850878442929127864_1489073941.dem.bz2` (Mirage 13:11) **holdout**: ก่อนแก้โค้ดได้ 274/290
+   - `dust2-85507dfb.json` ↔ `scripts/demos/003849547149096255807_0663000482.dem.bz2` (Dust2 13:7) **holdout ตัวจริง** (2026-11-05, โค้ดก่อนแก้): core 353/360, opening 20/20, clutch 25/25, aim exact 29/30 (shots_fired 9/10: mojo ยิง taser 1 นัด → Leetify น่าจะนับ taser), calibrating 26/109. ชื่อที่ไม่ใช่ ASCII จับคู่ครบ 10/10. **Head accuracy นับ SSG08:** ch4dum นับ = 18/29 = 0.62 ✓, ไม่นับ = 5/9 = 0.56 ✗ (Lā khes̄ SSG 10 hit ก็ตรง)
    - **`dust2-f2633f5c.json` ไม่มี demo ที่ตรง** (`dust2win.dem` เป็นคนละแมตช์) `validate-all` จะ SKIP
    - ก่อน validate ให้เช็ค map + จำนวนรอบ + ชื่อผู้เล่นว่าตรงกันก่อน (`validate` ทำให้เองและหยุดถ้าไม่ตรง). ชื่อใน demo ต่างจาก Leetify ได้ ใส่ `"aliases": [...]` ใน truth
 2. ดึงค่าจาก Leetify API แล้วเทียบกับที่เราคำนวณ ราย player ราย metric
@@ -248,7 +265,12 @@ kills, deaths, assists, HS kills, K/D, damage, ADR (`dpr`), KAST, rounds survive
 | Head accuracy: ไม่นับ AWP | inferno ch4dum 0.83 (ถ้านับ AWP = 0.35) | 🟢 |
 | Head accuracy: ไม่นับลูกซอง | mirage: นับลูกซอง 5/10, ไม่นับ 9/10 | 🟢 |
 | Head accuracy: นัดที่โดน 2 คน (หัว + อก) ไม่นับเป็นหัว | inferno Wagga r11, mirage PeterGooners r13 (ลำดับ event = หัวก่อน); "ใช้ hurt สุดท้ายของนัด" ก็อธิบายได้ | ✅ ผล / 🟡 กฎเป๊ะ |
-| Head accuracy: SSG08 / auto-sniper นับไหม | ไม่มี hit ด้วย SSG / SCAR / G3 ใน 2 แมตช์ (ตอนนี้นับ) | 🟡 |
+| Aim: shots_fired นับ taser | dust2: mojo taser 1 นัด = นัดที่ขาด | 🟢 (taser hit นับไหม 🟡, ยังไม่มีเคส) |
+| Flash Assist %: ทุก flash ที่เหยื่อยังบอดได้ kill (ไม่ใช่แค่ลูกล่าสุด) | dust2: Lā khes̄ r10; inferno / mirage ไม่ขัด | 🟢 |
+| Molotov damage = ไฟ (`inferno`) เท่านั้น ไม่นับตัวขวดกระแทก (`molotov` 1 HP) | dust2: gxmxi r14 (54 → 53) | 🟢 |
+| Unused utility: dust2 Chainnizy / gxmxi / โจ๊กเก๊า ของเราต่ำกว่า +$200 / +$200 / +$300 | ไม่เข้ากับกฎ flash ซ้ำ / ระเบิดที่เพิ่งปา | ❓ ยังไม่รู้ |
+| Blind duration: dust2 yyh 3.15 vs 3.00 | ตัด flash r16 (3.89s) แล้วตรง แต่ไม่มีเหตุผล; ตัดตอนตายไม่ตรง (2.87) | ❓ ยังไม่รู้ |
+| Head accuracy: SSG08 นับ | dust2-85507dfb: ch4dum นับ 0.62 ✓ / ไม่นับ 0.56 ✗; Lā khes̄ (SSG 10 hit) ตรง | 🟢 (auto-sniper ยังไม่มีเคส 🟡) |
 | Head accuracy: คนไม่มี hit ได้ null หรือ 0 | ทุกคนมี hit (ตอนนี้ให้ null; validate ถือว่า null = 0 ok) | 🟡 |
 | Counter-strafe ไม่นับ sniper | ch4dum (AWP) null ทั้งใน Leetify และของเรา | 🟢 |
 | **Death จากการออกเกม** (`kills.by_disconnect`): suicide/world ที่ tick เดียวกับ `player_disconnect` ของคนตาย (±1 tick). เจอ 5 ครั้งใน 2 แมตช์ (Suzy ระหว่างแมตช์, ที่เหลือหลังจบแมตช์). **General ยังนับเป็น death** (Leetify: Suzy deaths 13) และ KAST ไม่เปลี่ยน; ใช้แค่ clutch outcome. J ใน mirage หลุดกลางเกม 2 ครั้งแต่ไม่มี death เกิดขึ้น | 5 เคส | ✅ ตรวจจับ / 🟢 ผลต่อ clutch |

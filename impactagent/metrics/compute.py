@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from impactagent.constants import (
-    FIRE_DAMAGE_WEAPONS,
+    MOLOTOV_FIRE_WEAPONS,
     GRENADE_ITEM_TYPES,
     GRENADE_PRICES,
     HE_DAMAGE_WEAPONS,
@@ -235,8 +235,9 @@ def utility_metrics(p: ParsedDemo, all_kills: pd.DataFrame | None = None) -> pd.
             & (enemy["tick"] <= kill["tick"])
             & (enemy["tick"] + enemy["duration"] * tr >= kill["tick"])
         ]
-        if not b.empty:
-            leading.append(b.sort_values("tick").iloc[-1]["thrower_id"])
+        # Every flash that still blinds the victim gets the kill (dust2-85507dfb: Lā khes̄ r10,
+        # whose flash was not the latest one on the victim), not only the latest flash.
+        leading.extend(b.drop_duplicates(["thrower_id", "tick"])["thrower_id"].tolist())
     out["flashes_leading_to_kill"] = pd.Series(leading, dtype="object").value_counts().reindex(out.index).fillna(0).astype(int)
     # Per KILL (one flash can count several times), by anyone incl. the thrower, / flashes thrown.
     out["flash_assist_pct"] = out["flashes_leading_to_kill"] / out["flash_thrown"].replace(0, np.nan)
@@ -244,7 +245,7 @@ def utility_metrics(p: ParsedDemo, all_kills: pd.DataFrame | None = None) -> pd.
     # HE / fire damage
     dmg = p.damages[p.damages["attacker_id"].notna()]
     he = dmg[dmg["weapon"].isin(HE_DAMAGE_WEAPONS)]
-    fire = dmg[dmg["weapon"].isin(FIRE_DAMAGE_WEAPONS)]
+    fire = dmg[dmg["weapon"].isin(MOLOTOV_FIRE_WEAPONS)]
     # HE damage uses raw dmg_health, NOT capped at remaining HP (mirage-65db631a).
     out["he_damage_enemies"] = he[~he["is_team"]].groupby("attacker_id")[HE_DMG_COL].sum().reindex(out.index).fillna(0)
     # Team HE damage includes damage to yourself (inferno-44a522c3).

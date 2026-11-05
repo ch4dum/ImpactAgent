@@ -4,6 +4,7 @@
 # status: exact (matches Leetify on every validation pair) · calibrating (definition is a
 #   hypothesis; reported by validate but not gating) · custom (our own metric, no reference).
 # Rule-by-rule evidence: docs/metrics/leetify-metrics-spec.md §8.
+# note: free text; calibrating entries say they are our own definition.
 # scopes: only `all` is computed so far (CT / T splits come later).
 
 # ------------------------------------------------------------------ general
@@ -317,6 +318,7 @@
   source: trade_windows
   scopes: [all]
   ref: docs/metrics/leetify-metrics-spec.md#3-trades
+  note: our own definition; Leetify's is not reproduced yet (deviation per match in spec §1 / §3, 'นิยามของเรา')
   status: calibrating
 
 - id: trade_kill_attempts
@@ -330,6 +332,7 @@
   source: trade_windows
   scopes: [all]
   ref: docs/metrics/leetify-metrics-spec.md#3-trades
+  note: our own definition; Leetify's is not reproduced yet (deviation per match in spec §1 / §3, 'นิยามของเรา')
   status: calibrating
 
 - id: traded_death_opportunities
@@ -343,6 +346,7 @@
   source: trade_windows
   scopes: [all]
   ref: docs/metrics/leetify-metrics-spec.md#3-trades
+  note: our own definition; Leetify's is not reproduced yet (deviation per match in spec §1 / §3, 'นิยามของเรา')
   status: calibrating
 
 - id: traded_death_attempts
@@ -356,6 +360,7 @@
   source: trade_windows
   scopes: [all]
   ref: docs/metrics/leetify-metrics-spec.md#3-trades
+  note: our own definition; Leetify's is not reproduced yet (deviation per match in spec §1 / §3, 'นิยามของเรา')
   status: calibrating
 
 # ------------------------------------------------------------------ utility
@@ -463,7 +468,7 @@
   format: "0%"
   direction: higher_better
   aggregation: ratio
-  numerator: kills on enemies still blind from your flash (by anyone on your side, you included; per kill)
+  numerator: kills on enemies still blind from your flash (by anyone on your side, you included; per kill; every flash still blinding the victim gets it)
   denominator: flashbangs thrown
   source: blinds, kills, grenades
   scopes: [all]
@@ -525,7 +530,7 @@
   format: "0"
   direction: higher_better
   aggregation: sum
-  source: damages.dmg_effective, weapon inferno / molotov / incgrenade, to enemies
+  source: damages.dmg_effective, weapon inferno (fire only; the bottle hitting a player is not counted), to enemies
   scopes: [all]
   status: exact
 
@@ -552,7 +557,7 @@
   format: "0"
   direction: neutral
   aggregation: sum
-  source: shots WHERE aim_shot (gun, not shotgun / knife / taser / grenade, not in the shooter's death tick), whole round window incl. after round_end
+  source: shots WHERE aim_shot (gun or taser, not shotgun / knife / grenade, not in the shooter's death tick), whole round window incl. after round_end
   scopes: [all]
   ref: docs/metrics/leetify-metrics-spec.md#1-aim
   status: exact
@@ -578,7 +583,7 @@
   format: "0%"
   direction: higher_better
   aggregation: ratio
-  numerator: counted shots (no AWP / shotgun) whose every enemy hurt is a head hit
+  numerator: counted shots (no AWP / shotgun; SSG08 counts) whose every enemy hurt is a head hit
   denominator: counted shots (no AWP / shotgun) that hit an enemy
   source: shots.hit_head, shots.hit WHERE shots.aim_shot
   scopes: [all]
@@ -599,6 +604,7 @@
   scopes: [all]
   coach_hint: Accuracy when you could actually see someone; ignores spam and wallbang attempts.
   ref: docs/metrics/leetify-metrics-spec.md#11-accuracy-enemy-spotted-
+  note: our own definition; Leetify's is not reproduced yet (deviation per match in spec §1 / §3, 'นิยามของเรา')
   status: calibrating
 
 - id: spray_accuracy
@@ -613,6 +619,7 @@
   source: shots.spray_id, shots.shot_index_in_spray
   scopes: [all]
   ref: docs/metrics/leetify-metrics-spec.md#13-spray-accuracy-
+  note: our own definition; Leetify's is not reproduced yet (deviation per match in spec §1 / §3, 'นิยามของเรา')
   status: calibrating
 
 - id: counter_strafe_pct
@@ -628,6 +635,7 @@
   scopes: [all]
   coach_hint: Share of rifle shots fired while standing still. Tap the opposite key before shooting.
   ref: docs/metrics/leetify-metrics-spec.md#16-counter-strafing-
+  note: our own definition; Leetify's is not reproduced yet (deviation per match in spec §1 / §3, 'นิยามของเรา')
   status: calibrating
 
 - id: first_bullet_accuracy
@@ -642,6 +650,7 @@
   source: shots.first_bullet, shots.enemy_spotted
   scopes: [all]
   ref: docs/metrics/leetify-metrics-spec.md#1-aim
+  note: our own definition; Leetify's is not reproduced yet (deviation per match in spec §1 / §3, 'นิยามของเรา')
   status: calibrating
 
 - id: ttd_ms
@@ -655,6 +664,7 @@
   scopes: [all]
   coach_hint: Time from first seeing an enemy to first damaging him. High values usually mean poor crosshair placement or unprepared peeks.
   ref: docs/metrics/leetify-metrics-spec.md#15-time-to-damage-reaction_time-
+  note: our own definition; Leetify's is not reproduced yet (deviation per match in spec §1 / §3, 'นิยามของเรา')
   status: calibrating
 
 - id: ttk_ms
@@ -667,6 +677,7 @@
   source: engagements.ttk_ms (engagements that end in a kill)
   scopes: [all]
   ref: docs/metrics/leetify-metrics-spec.md#1-aim
+  note: our own definition; Leetify's is not reproduced yet (deviation per match in spec §1 / §3, 'นิยามของเรา')
   status: calibrating
 
 - id: crosshair_placement_deg
@@ -680,4 +691,5 @@
   scopes: [all]
   coach_hint: How far you had to move your crosshair after an enemy appeared. Pre-aim common angles at head height.
   ref: docs/metrics/leetify-metrics-spec.md#14-crosshair-placement-preaim-
+  note: our own definition; Leetify's is not reproduced yet (deviation per match in spec §1 / §3, 'นิยามของเรา')
   status: calibrating

@@ -23,6 +23,10 @@
   - exact: `shots_fired` (ไม่นับลูกซอง และนัดใน tick ที่คนยิงตาย; Mirage holdout เจอทั้งสองกฎ), `accuracy_all`, `accuracy_head`
   - calibrating (ตรงราย player inferno / mirage): spotted acc 3/10, 6/10 · counter-strafe 2/9, 3/9 · spray 0/7, 3/8 · first bullet 1/10, 0/10 · TTK 1/10, 0/10 · TTD 0/10, 0/10 · crosshair 0/10, 0/10
   - Holdout Mirage ก่อนแก้โค้ด: core aim 9/20 (shots_fired 3/10, accuracy_all 6/10), calibrating 15/77
+- [x] Validation pair 3 `dust2-85507dfb` (holdout ตัวจริง, 2026-11-05): ก่อนแก้โค้ด core 353/360, opening 20/20, clutch 25/25; head accuracy นับ SSG08 (ch4dum 0.62); ชื่อ non-ASCII จับคู่ครบ. ที่ยังไม่ตรง: shots_fired (taser 1 นัด), flash_assist_pct 1, flash_blind_duration_avg 1, molotov damage 1 (+1 HP), unused utility 3 คน (ต่ำกว่า $14–20)
+- [x] Dust2 core (2026-11-05): shots_fired นับ taser; flash assist ให้เครดิตทุก flash ที่เหยื่อยังบอด; molotov damage นับเฉพาะไฟ → core 356/360 (Inferno 305/305, Mirage 350/350 ไม่พัง)
+- [ ] Dust2 ที่เหลือ 4 ช่อง (ยังหาสาเหตุไม่เจอ, รอเจ้าของ): unused utility 3 คน (+$200 / +$200 / +$300), blind duration yyh (3.15 vs 3.00) → `validate-all` ยังไม่ผ่านเพราะ 4 ช่องนี้
+- [x] Visibility จุดเป้า 8 จุด เป็นค่าหลัก (`TARGET_LAYOUT`, 2026-11-05): capsule 24 จุดไม่ดีกว่าชัดเจน; crosshair แบบมุมไปหาหัวตอน first seen ไม่ใกล้กว่า → คงนิยามเดิม; นิยามของเราสำหรับ metric calibrating อยู่ใน spec §1 / §3
 - [ ] Aim calibrating: TTD / crosshair ของเราต่ำกว่า Leetify ทุกคน (เราเห็นศัตรูช้ากว่า). ทดลองแล้ว: จุดเป้า 8 จุดลด TTD bias จาก −173 / −143 เหลือ −125 / −83ms (`spotted` แย่กว่า, union ช่วยนิดเดียว) → ถัดไปลอง hitbox ที่ใหญ่กว่า / capsule แล้วค่อยเปลี่ยนค่าหลัก; crosshair แทบไม่เปลี่ยน = ต้องหานิยามใหม่; spray ของ Leetify น่าจะไม่ใช่ hit/shot (yyh 0.83 ทั้งที่ accuracy 0.11)
 - [x] **Visibility module** (`impactagent/visibility/`, 2026-11-05): interface เดียว backend `spotted` (ของเกม) / `raycast` (awpy mesh) + lag window 7 tick + ควันทรงกลม + FOV 50°; `python -m impactagent visibility DEMO...` รายงานผล
   - kill ปกติที่ "เห็น" (raycast เต็ม): inferno 72/72, mirage 150/152; ผ่านควัน: 0/7, 2/7; `spotted` ของเกมเห็นแค่ ~75% ของ kill ปกติ
@@ -74,8 +78,10 @@
 | Buy type thresholds | ยังไม่ตัดสินใจ (Leetify ไม่เปิดเผย) |
 | Visibility | **raycast เป็นค่าหลัก** `spotted` ยังสลับใช้ได้ (`spotted` เห็น kill ปกติแค่ ~75%) (2026-11-05) |
 | Lag compensation | **window คงที่ 7 tick** (เป้าหมายตำแหน่งใดก็ได้ใน 7 tick ล่าสุด) ไม่ย้อนตาม ping: tick ที่ต้องย้อนไม่สัมพันธ์กับ ping ของคนยิง (rank corr 0.01, 64 hit, ping 13–57ms) (2026-11-05) |
-| Aim shot set | นัดที่นับใน accuracy ทุกตัว = ปืน (ไม่นับมีด / taser / ระเบิด / **ลูกซอง**) ทั้งช่วงรอบรวมหลัง round_end ยกเว้นนัดใน tick ที่คนยิงตาย; hit = ทำ damage ศัตรูใน tick เดียวกัน (2026-11-05) |
+| Aim shot set | นัดที่นับใน accuracy ทุกตัว = ปืน + **taser** (ไม่นับมีด / ระเบิด / **ลูกซอง**) ทั้งช่วงรอบรวมหลัง round_end ยกเว้นนัดใน tick ที่คนยิงตาย; hit = ทำ damage ศัตรูใน tick เดียวกัน (2026-11-05) |
 | Engagement v1 | สร้างจาก damage: สแกนย้อนทีละ tick ขณะ A เห็น B (gap ≤ 8 tick, ≤ 2.5s) ยังไม่มี engagement ที่ไม่มี damage (2026-11-05) |
+| Target points | 8 จุด (หัว คอ อก เอว เข่า เท้า + ไหล่ ±14u) `TARGET_LAYOUT = "8"`; 24 จุดไม่คุ้ม (2026-11-05) |
+| Calibrating metrics | ใช้นิยามของเราเอง (spec §1 / §3 "นิยามของเรา") จนกว่าจะทำซ้ำนิยาม Leetify ได้ (2026-11-05) |
 | Smoke | ทรงกลม R 144, ศูนย์กลาง +32 จากจุดระเบิด, บล็อกตั้งแต่ระเบิด +0.5s ถึง `smokegrenade_expired`; calibrate บน inferno (2026-11-05) |
 | Trade window | 4.0s (ช่วงที่ข้อมูลยอมรับ [3.48, 4.47) s) |
 | validate gating | gate core metric + opening duels + clutches; metric ที่ registry ตั้ง `status: calibrating` (ตอนนี้ trade opp/att) รายงานแต่ไม่ fail |

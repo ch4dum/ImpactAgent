@@ -42,6 +42,7 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 | `impactagent/validate/__init__.py` | Compare our metrics with a truth JSON; aborts if demo and truth look like different matches |
 | `data/validation/inferno-44a522c3.json` | **Validation pair 1 (calibration):** Leetify's real values for `scripts/demos/003852158461294936246_0991785667.dem.bz2` (de_inferno 13:0, 13 rounds; utility only for our team; read its `note`). **Gitignored, never commit.** |
 | `data/validation/mirage-65db631a.json` | **Validation pair 2 (holdout):** `scripts/demos/003850878442929127864_1489073941.dem.bz2` (de_mirage 13:11, 24 rounds; utility for both teams, some nulls; players may carry `aliases`). Gitignored. |
+| `data/validation/dust2-85507dfb.json` | **Validation pair 3 (holdout):** `scripts/demos/003849547149096255807_0663000482.dem.bz2` (de_dust2 13:7, 20 rounds; non-ASCII names; ch4dum on SSG08). Gitignored. Holdout result (code before any change): core 353/360, opening 20/20, clutch 25/25 (spec §6) |
 | `data/validation/dust2-f2633f5c.json` | Leetify values for a de_dust2 13:9 match. **No local demo matches it** (`dust2win.dem`, `dust139.dem`, `dust1614.dem` are other matches). Don't tune anything to it. Gitignored. |
 | `data/parsed/` | Parser outputs (Parquet). Gitignored. |
 
@@ -50,7 +51,8 @@ Phase 0 (research) and data model v0.1 are done. Full plan and checklist: `docs/
 
 - **CLI:** `inspect`, `parse`, `validate`, `validate-all`, `visibility`. `parse_demo` reads `.dem` / `.dem.bz2` / `.dem.gz` (`.dem.zst` with zstandard), caps the decompressed demo at 1 GiB and parses in a child process killed after 300 s (`MAX_DEMO_BYTES`, `PARSE_TIMEOUT_SECONDS` in `constants.py`).
 - **Metrics vs Leetify:** core (General + Utility + trade succeeded + opening traded % + shots fired / accuracy / head accuracy) **inferno 305/305, mirage 350/350** (player × metric); opening duels 37/37 rounds; clutches 43/43 (incl. disconnect deaths). Trade opportunity / attempt and 7 Aim metrics (spotted accuracy, spray, counter-strafe, first bullet, TTD, TTK, crosshair) are `calibrating`, not gating. Rule-by-rule evidence (2 matches / 1 match / hypothesis): `docs/metrics/leetify-metrics-spec.md` §8.
-- **Visibility:** `impactagent/visibility/` (raycast default, spotted switchable): normal kills seen inferno 72/72, mirage 150/152; lag window fixed 7 ticks (ping does not explain the rewind); smoke spheres R 144 / +32z / 0.5 s bloom; FOV 50°. Spec §0 + §8.
+- **Dust2 holdout (pair 3):** core 356/360 after taser / flash-assist / molotov-bottle fixes; 4 cells (unused utility ×3, blind duration yyh) have no known cause yet, so `validate-all` fails on them until the owner decides. Inferno 305/305, Mirage 350/350.
+- **Visibility:** `impactagent/visibility/` (raycast default, 8 target points `TARGET_LAYOUT`, spotted switchable): normal kills seen inferno 72/72, mirage 150/152; lag window fixed 7 ticks (ping does not explain the rewind); smoke spheres R 144 / +32z / 0.5 s bloom; FOV 50°. Spec §0 + §8.
 - **Metric registry:** `impactagent/metrics/registry.yaml`, 53 metrics (42 exact, 11 calibrating). Every finished metric gets an entry; `validate-all` checks it and reads `calibrating` from it.
 - **Branches:** v2 became `main` and the old `main` became `v1-draft` (2026-11-05); main's history was rewritten the same day.
 

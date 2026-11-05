@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from impactagent.constants import EYE_HEIGHT_STANDING, TARGET_CHEST_FRACTION, TARGET_FEET_OFFSET
+from impactagent.constants import EYE_HEIGHT_STANDING, TARGET_LAYOUT, TARGET_LAYOUTS
 
 Vec = tuple[float, float, float]
 
@@ -18,11 +18,19 @@ def eye(state) -> Vec:
     return (x, y, z + eye_height(dvo))
 
 
-def target_points(state) -> tuple[Vec, Vec, Vec]:
-    """Head, chest, feet of a player."""
+def target_points(state, observer: Vec | None = None, layout: str | list = TARGET_LAYOUT) -> list[Vec]:
+    """Points on a player (TARGET_LAYOUTS). Sideways offsets are perpendicular to the line from
+    `observer` (x axis if None). The first two points are head and an upper-body point."""
     x, y, z, dvo = state[:4]
     h = eye_height(dvo)
-    return (x, y, z + h), (x, y, z + TARGET_CHEST_FRACTION * h), (x, y, z + TARGET_FEET_OFFSET)
+    pts = TARGET_LAYOUTS[layout] if isinstance(layout, str) else layout
+    px, py = 1.0, 0.0
+    if observer is not None:
+        dx, dy = x - observer[0], y - observer[1]
+        n = math.hypot(dx, dy)
+        if n > 0:
+            px, py = -dy / n, dx / n
+    return [(x + px * s, y + py * s, z + f * h + dz) for f, dz, s in pts]
 
 
 def view_dir(pitch: float, yaw: float) -> Vec:

@@ -13,7 +13,7 @@ from impactagent.constants import (
     ENGAGEMENT_GAP_TICKS,
     ENGAGEMENT_LOOKBACK_SECONDS,
     FIRST_BULLET_GAP_SECONDS,
-    GUNS,
+    AIM_WEAPONS,
     MACHINE_GUNS,
     PISTOLS,
     RIFLES,
@@ -42,14 +42,14 @@ def weapon_class(w: pd.Series) -> pd.Series:
 
 
 def gun_damages(damages: pd.DataFrame) -> pd.DataFrame:
-    """Gun damage on enemies (no team damage, grenades, knife)."""
+    """Gun (+ taser) damage on enemies (no team damage, grenades, knife)."""
     d = damages
-    return d[d["weapon"].isin(GUNS) & d["attacker_id"].notna() & ~d["is_team"]]
+    return d[d["weapon"].isin(AIM_WEAPONS) & d["attacker_id"].notna() & ~d["is_team"]]
 
 
 def needed_ticks(shots: pd.DataFrame, damages: pd.DataFrame, backend: VisibilityBackend, tickrate: int) -> set[int]:
     look = int(ENGAGEMENT_LOOKBACK_SECONDS * tickrate)
-    base = {int(t) for t in shots.loc[shots["weapon"].isin(GUNS), "tick"]}
+    base = {int(t) for t in shots.loc[shots["weapon"].isin(AIM_WEAPONS), "tick"]}
     base |= {int(t) - m for t in gun_damages(damages)["tick"] for m in range(look + 1)}
     return backend.ticks_needed(base)
 
@@ -64,7 +64,7 @@ def build_shots(shots: pd.DataFrame, damages: pd.DataFrame, kills: pd.DataFrame,
                 states: TickStates, backend: VisibilityBackend, tickrate: int) -> pd.DataFrame:
     """Add per-shot features to the shots table.
 
-    aim_shot: the shots Leetify counts in shots_fired / accuracy: guns except shotguns, and not
+    aim_shot: the shots Leetify counts in shots_fired / accuracy: guns except shotguns + taser, and not
       fired in the tick the shooter died (mirage holdout: 7 + 6 shots, inferno has none).
 
     hit / hit_head / hit_victim_id: a gun shot "hits" when its shooter hurt an enemy with a gun in
@@ -80,12 +80,12 @@ def build_shots(shots: pd.DataFrame, damages: pd.DataFrame, kills: pd.DataFrame,
     s["weapon_class"] = weapon_class(s["weapon"])
     died = set(zip(kills["victim_id"], kills["tick"]))
     s["died_this_tick"] = [(a, int(t)) in died for a, t in zip(s["shooter_id"], s["tick"])]
-    s["aim_shot"] = s["weapon"].isin(GUNS) & ~s["weapon"].isin(SHOTGUNS) & ~s["died_this_tick"]
+    s["aim_shot"] = s["weapon"].isin(AIM_WEAPONS) & ~s["weapon"].isin(SHOTGUNS) & ~s["died_this_tick"]
     d = gun_damages(damages)
     hits = d.groupby(["attacker_id", "tick"]).agg(
         hit_victim_id=("victim_id", "first"), hit_head=("hitgroup", lambda h: bool((h == "head").all())))
     key = pd.MultiIndex.from_arrays([s["shooter_id"], s["tick"]])
-    is_gun = s["weapon"].isin(GUNS).to_numpy()
+    is_gun = s["weapon"].isin(AIM_WEAPONS).to_numpy()
     hv = hits["hit_victim_id"].reindex(key).to_numpy()
     s["hit_victim_id"] = np.where(is_gun, hv, None)
     s["hit"] = s["hit_victim_id"].notna()
@@ -162,7 +162,7 @@ def build_engagements(shots: pd.DataFrame, damages: pd.DataFrame, kills: pd.Data
         o1 = states.get(int(fd), a)
         cerr.append(_angle(view_dir(o0[4], o0[5]), view_dir(o1[4], o1[5])) if o0 and o1 else np.nan)
     eng["crosshair_err_deg"] = cerr
-    sh = shots[shots["weapon"].isin(GUNS)]
+    sh = shots[shots["weapon"].isin(AIM_WEAPONS)]
     by = {sid: np.sort(g["tick"].to_numpy()) for sid, g in sh.groupby("shooter_id")}
     n_shots = []
     for a, fs, fd, last in zip(eng["attacker_id"], eng["first_seen_tick"], eng["first_damage_tick"], eng["last_damage_tick"]):
