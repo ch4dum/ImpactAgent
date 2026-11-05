@@ -268,8 +268,8 @@ kills, deaths, assists, HS kills, K/D, damage, ADR (`dpr`), KAST, rounds survive
 | Aim: shots_fired นับ taser | dust2: mojo taser 1 นัด = นัดที่ขาด | 🟢 (taser hit นับไหม 🟡, ยังไม่มีเคส) |
 | Flash Assist %: ทุก flash ที่เหยื่อยังบอดได้ kill (ไม่ใช่แค่ลูกล่าสุด) | dust2: Lā khes̄ r10; inferno / mirage ไม่ขัด | 🟢 |
 | Molotov damage = ไฟ (`inferno`) เท่านั้น ไม่นับตัวขวดกระแทก (`molotov` 1 HP) | dust2: gxmxi r14 (54 → 53) | 🟢 |
-| Unused utility: dust2 Chainnizy / gxmxi / โจ๊กเก๊า ของเราต่ำกว่า +$200 / +$200 / +$300 | ไม่เข้ากับกฎ flash ซ้ำ / ระเบิดที่เพิ่งปา | ❓ ยังไม่รู้ |
-| Blind duration: dust2 yyh 3.15 vs 3.00 | ตัด flash r16 (3.89s) แล้วตรง แต่ไม่มีเหตุผล; ตัดตอนตายไม่ตรง (2.87) | ❓ ยังไม่รู้ |
+| **เปิดอยู่ (known exception)** Unused utility: dust2 Chainnizy / gxmxi / โจ๊กเก๊า ของเราขาด $200 / $200 / $300 (flash 1, flash 1, smoke 1) | ตรวจทุกการตาย (round, เวลาเทียบ round_end, สาเหตุ, active weapon, inventory ที่ −64 / −8 / −1 / 0 tick, ระเบิดที่ปา, ที่เก็บ): ไม่มีการตายที่ถือระเบิดในมือ, ไม่มี C4 / world / ตกตาย, inventory ที่ −64…−1 เท่ากัน (ที่ tick ตายว่างเสมอ), "มีตอน freeze end + ที่ได้มา − ที่ปา" เท่ากับ inventory ตอนตายสำหรับ 3 คนนี้ทุกครั้ง; กฎ "flash ซ้ำนับ 2" ได้ +$400 ของ Chainnizy และ gxmxi ไม่มี flash ซ้ำ; "ระเบิดที่ปา < 3s ก่อนตาย" ได้ Chainnizy +$600 | ❓ `impactagent/validate/known_exceptions.yaml` |
+| **เปิดอยู่ (known exception)** Blind duration: dust2 yyh 3.15 vs 3.00 | flash r16 ระเบิด**หลัง yyh ตาย** (fuse 1.72s) ตัดลูกนี้ = 3.004 ✓ แต่ mirage ch4dum r21 เป็นกรณีเดียวกันและ Leetify นับ (นับ 3.37 ✓ / ตัด 3.66 ✗); inferno Suzy r3 เหมือนกันแต่ไม่มี truth. ทุกลูกระเบิดก่อน round_end, ทีมถูก, เหยื่อยังมีชีวิต | ❓ known exception |
 | Head accuracy: SSG08 นับ | dust2-85507dfb: ch4dum นับ 0.62 ✓ / ไม่นับ 0.56 ✗; Lā khes̄ (SSG 10 hit) ตรง | 🟢 (auto-sniper ยังไม่มีเคส 🟡) |
 | Head accuracy: คนไม่มี hit ได้ null หรือ 0 | ทุกคนมี hit (ตอนนี้ให้ null; validate ถือว่า null = 0 ok) | 🟡 |
 | Counter-strafe ไม่นับ sniper | ch4dum (AWP) null ทั้งใน Leetify และของเรา | 🟢 |

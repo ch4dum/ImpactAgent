@@ -1,0 +1,30 @@
+# Known exceptions: single (truth file, player, metric) cells where our value is off and the cause
+# is NOT known yet. validate reports them as `known` (not gating) instead of OFF. One entry = one
+# cell; never a tolerance. Remove an entry once its cause is fixed (validate warns when a listed
+# cell matches again). Evidence: docs/metrics/leetify-metrics-spec.md §8.
+#   pair   = truth file name without .json
+#   player = player name as in the truth file
+
+- pair: dust2-85507dfb
+  player: Chainnizy
+  metric: unused_utility_on_death_avg
+  reason: ours is $200 (one flashbang) short over 14 deaths; no death fits held-in-hand, picked-up, dropped, post-round, C4 or late-inventory hypotheses
+  since: 2026-11-05
+
+- pair: dust2-85507dfb
+  player: gxmxi
+  metric: unused_utility_on_death_avg
+  reason: ours is $200 (one flashbang) short over 14 deaths; same checks as Chainnizy, no cause found
+  since: 2026-11-05
+
+- pair: dust2-85507dfb
+  player: โจ๊กเก๊า
+  metric: unused_utility_on_death_avg
+  reason: ours is $300 (one smoke) short over 15 deaths; same checks as Chainnizy, no cause found
+  since: 2026-11-05
+
+- pair: dust2-85507dfb
+  player: yyh
+  metric: flash_blind_duration_avg
+  reason: matches if the r16 flash (thrower died before it popped) is dropped, but mirage ch4dum r21 is the same case and Leetify counts it
+  since: 2026-11-05

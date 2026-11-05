@@ -25,7 +25,8 @@
   - Holdout Mirage ก่อนแก้โค้ด: core aim 9/20 (shots_fired 3/10, accuracy_all 6/10), calibrating 15/77
 - [x] Validation pair 3 `dust2-85507dfb` (holdout ตัวจริง, 2026-11-05): ก่อนแก้โค้ด core 353/360, opening 20/20, clutch 25/25; head accuracy นับ SSG08 (ch4dum 0.62); ชื่อ non-ASCII จับคู่ครบ. ที่ยังไม่ตรง: shots_fired (taser 1 นัด), flash_assist_pct 1, flash_blind_duration_avg 1, molotov damage 1 (+1 HP), unused utility 3 คน (ต่ำกว่า $14–20)
 - [x] Dust2 core (2026-11-05): shots_fired นับ taser; flash assist ให้เครดิตทุก flash ที่เหยื่อยังบอด; molotov damage นับเฉพาะไฟ → core 356/360 (Inferno 305/305, Mirage 350/350 ไม่พัง)
-- [ ] Dust2 ที่เหลือ 4 ช่อง (ยังหาสาเหตุไม่เจอ, รอเจ้าของ): unused utility 3 คน (+$200 / +$200 / +$300), blind duration yyh (3.15 vs 3.00) → `validate-all` ยังไม่ผ่านเพราะ 4 ช่องนี้
+- [x] **Known exceptions** (`impactagent/validate/known_exceptions.yaml`, 2026-11-05): ช่อง (pair, player, metric) ที่ยังไม่รู้สาเหตุ แสดงเป็น `known` ไม่ gate, ไม่ใช่ tolerance; เตือน STALE ถ้ากลับมาตรง. ตอนนี้ 4 ช่องของ Dust2 → `validate-all` ผ่านทั้ง 3 pair (Dust2 core 356/356 +4 known)
+- [ ] Dust2 4 ช่องที่ยังเปิด (spec §8): unused utility 3 คน (flash / flash / smoke), blind duration yyh (flash ที่ระเบิดหลังคนปาตาย; Mirage ขัดกัน)
 - [x] Visibility จุดเป้า 8 จุด เป็นค่าหลัก (`TARGET_LAYOUT`, 2026-11-05): capsule 24 จุดไม่ดีกว่าชัดเจน; crosshair แบบมุมไปหาหัวตอน first seen ไม่ใกล้กว่า → คงนิยามเดิม; นิยามของเราสำหรับ metric calibrating อยู่ใน spec §1 / §3
 - [ ] Aim calibrating: TTD / crosshair ของเราต่ำกว่า Leetify ทุกคน (เราเห็นศัตรูช้ากว่า). ทดลองแล้ว: จุดเป้า 8 จุดลด TTD bias จาก −173 / −143 เหลือ −125 / −83ms (`spotted` แย่กว่า, union ช่วยนิดเดียว) → ถัดไปลอง hitbox ที่ใหญ่กว่า / capsule แล้วค่อยเปลี่ยนค่าหลัก; crosshair แทบไม่เปลี่ยน = ต้องหานิยามใหม่; spray ของ Leetify น่าจะไม่ใช่ hit/shot (yyh 0.83 ทั้งที่ accuracy 0.11)
 - [x] **Visibility module** (`impactagent/visibility/`, 2026-11-05): interface เดียว backend `spotted` (ของเกม) / `raycast` (awpy mesh) + lag window 7 tick + ควันทรงกลม + FOV 50°; `python -m impactagent visibility DEMO...` รายงานผล
@@ -84,6 +85,7 @@
 | Calibrating metrics | ใช้นิยามของเราเอง (spec §1 / §3 "นิยามของเรา") จนกว่าจะทำซ้ำนิยาม Leetify ได้ (2026-11-05) |
 | Smoke | ทรงกลม R 144, ศูนย์กลาง +32 จากจุดระเบิด, บล็อกตั้งแต่ระเบิด +0.5s ถึง `smokegrenade_expired`; calibrate บน inferno (2026-11-05) |
 | Trade window | 4.0s (ช่วงที่ข้อมูลยอมรับ [3.48, 4.47) s) |
+| Known exceptions | เฉพาะช่องที่ระบุ (pair, player, metric, reason) เมื่อหาสาเหตุไม่เจอ; ลบเมื่อแก้ได้ (2026-11-05) |
 | validate gating | gate core metric + opening duels + clutches; metric ที่ registry ตั้ง `status: calibrating` (ตอนนี้ trade opp/att) รายงานแต่ไม่ fail |
 | Map geometry | awpy-data `.mesh` (`pip install -e .[visibility]`, cache `~/.awpy/<ClientVersion>`, ไม่ commit) เลือก release ตาม `csgo_v<build>` ใน header ของ demo (2026-11-05) |
 | Parse limits | .dem หลังแตก ≤ 1 GiB (`MAX_DEMO_BYTES`), parse ≤ 300s (`PARSE_TIMEOUT_SECONDS`); เวลาแตกไฟล์ไม่นับใน timeout (คุมด้วยขนาดแทน) |

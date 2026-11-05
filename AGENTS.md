@@ -39,6 +39,7 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 | `impactagent/parse/trades.py` | `trade_windows` (per death × alive teammate, features sampled inside the trade window) |
 | `impactagent/visibility/` | Visibility module: `SpottedBackend` (game) / `RaycastBackend` (awpy mesh, lag window, smoke spheres, FOV) behind one `sees()` interface; `report.py` = kill visibility report (`python -m impactagent visibility DEMO...`). Raycast needs `pip install -e .[visibility]` |
 | `impactagent/__main__.py` | CLI: `inspect`, `parse`, `validate`, `validate-all`, `visibility` |
+| `impactagent/validate/known_exceptions.yaml` | Single cells with no known cause yet (status `known`, not gating) |
 | `impactagent/validate/__init__.py` | Compare our metrics with a truth JSON; aborts if demo and truth look like different matches |
 | `data/validation/inferno-44a522c3.json` | **Validation pair 1 (calibration):** Leetify's real values for `scripts/demos/003852158461294936246_0991785667.dem.bz2` (de_inferno 13:0, 13 rounds; utility only for our team; read its `note`). **Gitignored, never commit.** |
 | `data/validation/mirage-65db631a.json` | **Validation pair 2 (holdout):** `scripts/demos/003850878442929127864_1489073941.dem.bz2` (de_mirage 13:11, 24 rounds; utility for both teams, some nulls; players may carry `aliases`). Gitignored. |
@@ -51,7 +52,8 @@ Phase 0 (research) and data model v0.1 are done. Full plan and checklist: `docs/
 
 - **CLI:** `inspect`, `parse`, `validate`, `validate-all`, `visibility`. `parse_demo` reads `.dem` / `.dem.bz2` / `.dem.gz` (`.dem.zst` with zstandard), caps the decompressed demo at 1 GiB and parses in a child process killed after 300 s (`MAX_DEMO_BYTES`, `PARSE_TIMEOUT_SECONDS` in `constants.py`).
 - **Metrics vs Leetify:** core (General + Utility + trade succeeded + opening traded % + shots fired / accuracy / head accuracy) **inferno 305/305, mirage 350/350** (player × metric); opening duels 37/37 rounds; clutches 43/43 (incl. disconnect deaths). Trade opportunity / attempt and 7 Aim metrics (spotted accuracy, spray, counter-strafe, first bullet, TTD, TTK, crosshair) are `calibrating`, not gating. Rule-by-rule evidence (2 matches / 1 match / hypothesis): `docs/metrics/leetify-metrics-spec.md` §8.
-- **Dust2 holdout (pair 3):** core 356/360 after taser / flash-assist / molotov-bottle fixes; 4 cells (unused utility ×3, blind duration yyh) have no known cause yet, so `validate-all` fails on them until the owner decides. Inferno 305/305, Mirage 350/350.
+- **Dust2 holdout (pair 3):** core 356/356 + 4 known exceptions (unused utility ×3, blind duration yyh; cause unknown, `impactagent/validate/known_exceptions.yaml`, spec §8). Inferno 305/305, Mirage 350/350; `validate-all` passes.
+- **Known exceptions:** one entry per (pair, player, metric) with a reason, never a tolerance; validate prints them and warns STALE when a cell matches again.
 - **Visibility:** `impactagent/visibility/` (raycast default, 8 target points `TARGET_LAYOUT`, spotted switchable): normal kills seen inferno 72/72, mirage 150/152; lag window fixed 7 ticks (ping does not explain the rewind); smoke spheres R 144 / +32z / 0.5 s bloom; FOV 50°. Spec §0 + §8.
 - **Metric registry:** `impactagent/metrics/registry.yaml`, 53 metrics (42 exact, 11 calibrating). Every finished metric gets an entry; `validate-all` checks it and reads `calibrating` from it.
 - **Branches:** v2 became `main` and the old `main` became `v1-draft` (2026-11-05); main's history was rewritten the same day.

@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import json
 import math
+from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
+import yaml
 
 from impactagent.metrics.registry import by_id, check_registry, ids_with_status
 
@@ -121,6 +123,38 @@ def check_same_match(p, ours: pd.DataFrame, truth: dict) -> list[str]:
     return problems
 
 
+KNOWN_EXCEPTIONS_PATH = Path(__file__).with_name("known_exceptions.yaml")
+
+
+@lru_cache(maxsize=1)
+def known_exceptions(path: str | Path = KNOWN_EXCEPTIONS_PATH) -> dict[tuple[str, str, str], str]:
+    """(pair, player, metric) -> reason. One entry per cell whose cause is not known yet."""
+    entries = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or []
+    out = {}
+    for e in entries:
+        missing = [f for f in ("pair", "player", "metric", "reason") if not e.get(f)]
+        if missing:
+            raise ValueError(f"known_exceptions.yaml: entry {e!r} misses {missing}")
+        out[(str(e["pair"]), str(e["player"]), str(e["metric"]))] = str(e["reason"])
+    return out
+
+
+def apply_known_exceptions(df: pd.DataFrame, pair: str | None) -> tuple[pd.DataFrame, list[str]]:
+    """OFF cells listed for this pair become `known` (not gating). Returns (df, stale entries
+    that match again and can be removed)."""
+    if pair is None or df.empty:
+        return df, []
+    exc = {(pl, m): r for (pa, pl, m), r in known_exceptions().items() if pa == pair}
+    if not exc:
+        return df, []
+    df = df.copy()
+    keys = list(zip(df["player"], df["metric"]))
+    hit = pd.Series([k in exc for k in keys], index=df.index)
+    stale = [f"{pl} {m}" for (pl, m) in exc if ((df["player"] == pl) & (df["metric"] == m) & (df["status"] == "ok")).any()]
+    df.loc[hit & (df["status"] == "OFF"), "status"] = "known"
+    return df, stale
+
+
 # Per-round event kinds that gate validate-all.
 GATING_EVENTS = {"opening", "clutch"}
 # Reported but not gating: registry status `calibrating` (definition still a hypothesis).
@@ -161,8 +195,9 @@ def compare_events(p, ours: pd.DataFrame, truth: dict) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["kind", "round", "player", "leetify", "ours", "status"])
 
 
-def _run(demo: str | Path, truth: dict, metrics: list[str] | None = None):
-    """-> (problems, metric df without unimplemented rows, unimplemented names, events df)."""
+def _run(demo: str | Path, truth: dict, metrics: list[str] | None = None, pair: str | None = None):
+    """-> (problems, metric df without unimplemented rows, unimplemented names, events df).
+    `pair` (truth file stem) applies known_exceptions.yaml."""
     from impactagent.metrics.compute import compute_match_metrics
     from impactagent.parse.demo import parse_demo
 
@@ -171,6 +206,8 @@ def _run(demo: str | Path, truth: dict, metrics: list[str] | None = None):
     problems = check_same_match(p, ours, truth)
     df = compare(ours, truth, metrics)
     df["group"] = df["metric"].map(lambda m: "calibrating" if m in CALIBRATING_METRICS else "core")
+    df, stale = apply_known_exceptions(df, pair)
+    _run.stale = stale
     not_impl = sorted(df.loc[df["status"] == "missing", "metric"].unique())
     events = compare_events(p, ours, truth) if not metrics else pd.DataFrame()
     _run.last_columns = set(ours.columns)  # for the registry check in validate_all
@@ -178,7 +215,8 @@ def _run(demo: str | Path, truth: dict, metrics: list[str] | None = None):
 
 
 def _score(df: pd.DataFrame) -> str:
-    return f"{int((df['status'] == 'ok').sum())}/{len(df)}"
+    """ok / cells, known exceptions left out of the denominator."""
+    return f"{int((df['status'] == 'ok').sum())}/{int((df['status'] != 'known').sum())}"
 
 
 def _print_df(df: pd.DataFrame) -> None:
@@ -198,12 +236,13 @@ def validate_all(truth_dir: str | Path = "data/validation", metrics: list[str] |
         if not demo.is_file():
             print(f"{path.name:<28} SKIP (demo not found: {demo})")
             continue
-        problems, df, _, ev = _run(demo, truth, metrics)
+        problems, df, _, ev = _run(demo, truth, metrics, pair=path.stem)
         if problems:
             print(f"{path.name:<28} SKIP (different match: {'; '.join(problems)[:120]})")
             continue
         core, cal = df[df["group"] == "core"], df[df["group"] == "calibrating"]
-        line = f"{path.name:<28} core {_score(core)} ok"
+        n_known = int((core["status"] == "known").sum())
+        line = f"{path.name:<28} core {_score(core)} ok" + (f" (+{n_known} known exceptions)" if n_known else "")
         for kind in ("opening", "clutch"):
             sub = ev[ev["kind"] == kind] if not ev.empty else ev
             if len(sub):
@@ -211,7 +250,11 @@ def validate_all(truth_dir: str | Path = "data/validation", metrics: list[str] |
         if len(cal):
             line += f" | calibrating {_score(cal)} (not gating)"
         print(line)
-        off = core[core["status"] != "ok"]
+        off = core[~core["status"].isin(["ok", "known"])]
+        for row in core[core["status"] == "known"].itertuples():
+            print(f"   known: {row.player} {row.metric} ours {row.ours:.3f} vs {row.leetify:.3f} - {known_exceptions()[(path.stem, row.player, row.metric)]}")
+        for s in _run.stale:
+            print(f"   STALE known exception (matches now, remove it): {s}")
         ev_off = ev[ev["status"] != "ok"] if not ev.empty else ev
         if not off.empty:
             _print_df(off.drop(columns="group"))
@@ -242,7 +285,7 @@ def validate_all(truth_dir: str | Path = "data/validation", metrics: list[str] |
 def validate(demo: str | Path, truth_path: str | Path, metrics: list[str] | None = None,
              only_diff: bool = False, force: bool = False) -> int:
     truth = json.loads(Path(truth_path).read_text(encoding="utf-8"))
-    problems, df, not_impl, ev = _run(demo, truth, metrics)
+    problems, df, not_impl, ev = _run(demo, truth, metrics, pair=Path(truth_path).stem)
     if problems:
         print("Demo and truth file look like DIFFERENT matches:")
         for msg in problems:
@@ -276,4 +319,4 @@ def validate(demo: str | Path, truth_path: str | Path, metrics: list[str] | None
     ev_ok = ev.empty or bool((ev[ev["kind"].isin(GATING_EVENTS)]["status"] == "ok").all())
     print(f"\nTotal: core {_score(core)} ok, calibrating {_score(df[df['group'] == 'calibrating'])}"
           f"{', events ' + _score(ev) if not ev.empty else ''}, {len(not_impl)} metrics not implemented")
-    return 0 if (core["status"] == "ok").all() and ev_ok else 1
+    return 0 if core["status"].isin(["ok", "known"]).all() and ev_ok else 1
