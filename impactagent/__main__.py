@@ -1,4 +1,4 @@
-"""CLI: python -m impactagent {inspect,parse,validate,validate-all,visibility} <demo>."""
+"""CLI: python -m impactagent {inspect,parse,validate,validate-all,validate-faceit,visibility,wp-states,train-wp} <demo>."""
 
 from __future__ import annotations
 
@@ -104,6 +104,17 @@ def _cmd_wp_states(args: argparse.Namespace) -> int:
     return run_wp_states(args.dir, args.out, args.manifest)
 
 
+def _cmd_train_wp(args: argparse.Namespace) -> int:
+    from impactagent.ratings.train_wp import build_faceit_states, run_train_wp
+
+    faceit_states = None
+    if args.faceit_demo:
+        faceit_states = Path(args.faceit_states)
+        if not faceit_states.is_file():
+            build_faceit_states(args.faceit_demo, faceit_states, args.faceit_member)
+    return run_train_wp(args.states, args.out, args.set, faceit_states, f"team_{args.faceit_member}")
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):  # Windows consoles + non-ASCII player names
         try:
@@ -154,6 +165,15 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--out", default="data/parsed/wp_states.parquet")
     w.add_argument("--manifest", default="data/train_demos/manifest.csv")
     w.set_defaults(func=_cmd_wp_states)
+
+    tw = sub.add_parser("train-wp", help="train WP model v1 (impact-spec §6.4, needs .[train])")
+    tw.add_argument("states", type=Path)
+    tw.add_argument("--out", default="impactagent/ratings/wp_model_v1.json")
+    tw.add_argument("--set", choices=["A", "B", "C", "D"], help="feature set (default: best CV log loss)")
+    tw.add_argument("--faceit-demo", type=Path, help="held-out demo for the round-start WP check")
+    tw.add_argument("--faceit-states", default="data/parsed/wp_states_faceit.parquet")
+    tw.add_argument("--faceit-member", default="haineieie")
+    tw.set_defaults(func=_cmd_train_wp)
 
     args = ap.parse_args(argv)
     return args.func(args)

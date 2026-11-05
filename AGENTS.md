@@ -38,7 +38,9 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 | `impactagent/metrics/aim.py` | Aim metrics (`aim_metrics`), joined into `compute_match_metrics` |
 | `impactagent/parse/trades.py` | `trade_windows` (per death × alive teammate, features sampled inside the trade window) |
 | `impactagent/visibility/` | Visibility module: `SpottedBackend` (game) / `RaycastBackend` (awpy mesh, lag window, smoke spheres, FOV) behind one `sees()` interface; `report.py` = kill visibility report (`python -m impactagent visibility DEMO...`). Raycast needs `pip install -e .[visibility]` |
-| `impactagent/__main__.py` | CLI: `inspect`, `parse`, `validate`, `validate-all`, `visibility` |
+| `docs/metrics/impact-spec.md` | Phase 2 spec: WP model, Impact credit, RWS, work order (§6) |
+| `impactagent/ratings/` | `wp_states.py` (WP training states), `train_wp.py` (CV + fit, sklearn only here), `wp_model.py` + `wp_model_v1.json` (predict, numpy only) |
+| `impactagent/__main__.py` | CLI: `inspect`, `parse`, `validate`, `validate-all`, `validate-faceit`, `visibility`, `wp-states`, `train-wp` |
 | `impactagent/validate/known_exceptions.yaml` | Single cells with no known cause yet (status `known`, not gating) |
 | `impactagent/validate/__init__.py` | Compare our metrics with a truth JSON; aborts if demo and truth look like different matches |
 | `data/validation/inferno-44a522c3.json` | **Validation pair 1 (calibration):** Leetify's real values for `scripts/demos/003852158461294936246_0991785667.dem.bz2` (de_inferno 13:0, 13 rounds; utility only for our team; read its `note`). **Gitignored, never commit.** |
@@ -50,12 +52,13 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 ## Current status (2026-11-05)
 Phase 0 (research) and data model v0.1 are done. Full plan and checklist: `docs/roadmap.md`.
 
-- **CLI:** `inspect`, `parse`, `validate`, `validate-all`, `visibility`. `parse_demo` reads `.dem` / `.dem.bz2` / `.dem.gz` (`.dem.zst` with zstandard), caps the decompressed demo at 1 GiB and parses in a child process killed after 300 s (`MAX_DEMO_BYTES`, `PARSE_TIMEOUT_SECONDS` in `constants.py`).
+- **CLI:** `inspect`, `parse`, `validate`, `validate-all`, `validate-faceit`, `visibility`, `wp-states`, `train-wp`. `parse_demo` reads `.dem` / `.dem.bz2` / `.dem.gz` (`.dem.zst` with zstandard), caps the decompressed demo at 1 GiB and parses in a child process killed after 300 s (`MAX_DEMO_BYTES`, `PARSE_TIMEOUT_SECONDS` in `constants.py`).
 - **Metrics vs Leetify:** core (General + Utility + trade succeeded + opening traded % + shots fired / accuracy / head accuracy) **inferno 305/305, mirage 350/350** (player × metric); opening duels 37/37 rounds; clutches 43/43 (incl. disconnect deaths). Trade opportunity / attempt and 7 Aim metrics (spotted accuracy, spray, counter-strafe, first bullet, TTD, TTK, crosshair) are `calibrating`, not gating. Rule-by-rule evidence (2 matches / 1 match / hypothesis): `docs/metrics/leetify-metrics-spec.md` §8.
 - **Dust2 holdout (pair 3):** core 356/356 + 4 known exceptions (unused utility ×3, blind duration yyh; cause unknown, `impactagent/validate/known_exceptions.yaml`, spec §8). Inferno 305/305, Mirage 350/350; `validate-all` passes.
 - **Known exceptions:** one entry per (pair, player, metric) with a reason, never a tolerance; validate prints them and warns STALE when a cell matches again.
 - **Visibility:** `impactagent/visibility/` (raycast default, 8 target points `TARGET_LAYOUT`, spotted switchable): normal kills seen inferno 72/72, mirage 150/152; lag window fixed 7 ticks (ping does not explain the rewind); smoke spheres R 144 / +32z / 0.5 s bloom; FOV 50°. Spec §0 + §8.
 - **Metric registry:** `impactagent/metrics/registry.yaml`, 53 metrics (42 exact, 11 calibrating). Every finished metric gets an entry; `validate-all` checks it and reads `calibrating` from it.
+- **Phase 2 (ratings, `docs/metrics/impact-spec.md`):** RWS (`impactagent/metrics/rws.py`, sequential damage) matches FACEIT 30/30 ±0.01 on 1 match (`validate-faceit`, still `calibrating`). `wp_states` (`python -m impactagent wp-states data/train_demos`) -> `data/parsed/wp_states.parquet`: 30 matches, 639 rounds. WP model v1 (`python -m impactagent train-wp data/parsed/wp_states.parquet`, needs `.[train]`): standardized L2 logistic, feature set D, CV log loss 0.449 vs baseline 0.496, FACEIT round-start WP T 62% / CT 54% (≈61 / 55). Prediction `impactagent/ratings/wp_model.py` (numpy only, model `wp_model_v1.json`). Next: credit assignment / Impact (spec §6.5).
 - **Branches:** v2 became `main` and the old `main` became `v1-draft` (2026-11-05); main's history was rewritten the same day.
 
 Validate (run after every metric/parser change; all pairs and the registry must stay green):

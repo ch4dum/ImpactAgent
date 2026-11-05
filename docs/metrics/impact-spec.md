@@ -40,6 +40,27 @@ Rating รวม (แบบ 1.70 ของ FACEIT) ยังไม่ทำ จ�
 - บันทึก model เป็น `impactagent/ratings/wp_model_v1.json` (coefficients + feature list + training manifest hash) ไม่ใช้ pickle
 - แบ่ง train/test ตาม **แมตช์** (ไม่ใช่ตามแถว)
 
+### 2.2.1 ผล v1 (2026-11-05, `python -m impactagent train-wp data/parsed/wp_states.parquet`)
+- ข้อมูล 30 แมตช์ · 639 รอบ · 4,962 แถว trainable · GroupKFold 5 fold ตามแมตช์ · weight = 1/แถว trainable ของรอบ · standardize feature (mean/std เก็บใน JSON, `predict_wp` ใช้ numpy อย่างเดียว) · C จาก {0.01, 0.1, 1, 10} ตาม log loss
+- **feature ที่เลือก = ชุด D**: `t_alive, ct_alive, bomb_planted, time_left_pre, time_left_post, equip_diff_k, map_dust2, map_mirage, alive_prod, ct_can_defuse` (C = 1)
+  - `ct_can_defuse` = หลัง plant และ C4 เหลือ ≥ 5s ถ้า CT ที่รอดมี kit ไม่งั้น ≥ 10s; **wp_states ยังไม่มีข้อมูล kit → ใช้ ≥ 10s ทุกแถว** (เพิ่ม column `ct_has_kit` ทีหลังได้ `feature_matrix` อ่านให้เองถ้ามี)
+- CV (round-weighted, mean ± std):
+
+| ชุด | C | Brier | log loss |
+|---|---|---|---|
+| baseline (ตาราง t_alive × ct_alive × bomb, smoothing α=2) | – | 0.1638 ± 0.0027 | 0.4955 ± 0.0062 |
+| A | 0.1 | **0.1465 ± 0.0030** | **0.4469 ± 0.0092** |
+| B (A + map) | 0.1 | 0.1477 ± 0.0032 | 0.4504 ± 0.0092 |
+| C (B + alive_prod) | 0.1 | 0.1474 ± 0.0030 | 0.4497 ± 0.0090 |
+| **D (C + ct_can_defuse)** | 1 | 0.1472 ± 0.0032 | 0.4491 ± 0.0100 |
+
+- เหตุที่เลือก D ไม่ใช่ A (log loss ต่ำสุด): ต่างกัน 0.002 น้อยกว่า std ระหว่าง fold (~0.009) แต่ใน A `time_left_post` เป็นบวก (C4 เหลือน้อย → WP ของ T ลดลง ผิดทิศ: 2v2 planted 30s 64.8% → 3s 62.4%) ส่วน D แก้ได้ (2v2 planted 12s 59.0% → 8s 91.0%) และ round-start WP ใกล้ FACEIT กว่า (ด้านล่าง). map one-hot ทำให้ CV แย่ลงนิดหน่อย (B > A) แต่ยังเก็บไว้เพราะเป็น intercept ประจำแมพตาม §2.2 และหดเข้าหา 0 อยู่แล้ว
+- coefficients ชุด D (standardized / ต่อหน่วย): t_alive +1.40 / +1.017 · ct_alive −0.78 / −0.565 · bomb_planted +0.96 / +2.64 · time_left_pre +0.17 / +0.0047 · time_left_post +0.14 / +0.011 · **equip_diff_k +0.88 / +0.079 (บวก ✓)** · map_dust2 −0.08 · map_mirage −0.16 · alive_prod −0.54 / −0.070 · **ct_can_defuse −0.71 / −1.99** · intercept −0.05
+  - ข้อสังเกต: ภายในช่วงที่ CT ยังกู้ทัน (≥ 10s) `time_left_post` ยังบวกเล็กน้อย (30s 63.7% → 12s 59.0%) น่าจะเป็น selection (state ท้าย afterplant ที่ T ยังไม่ชนะมักเป็นตอน CT retake) แต่ขั้นที่ 10s ใหญ่กว่ามาก → โดยรวมเวลาน้อยไม่ทำให้ T แย่ลง; ช่วง 5–10s ที่ CT มี kit จะถูกประเมินสูงไปจนกว่าจะมีข้อมูล kit
+- reliability (out-of-fold ชุด D, 10 ช่อง, pred / actual): 0.048/0.045 · 0.146/0.155 · 0.247/0.266 · 0.347/0.348 · 0.448/0.446 · 0.545/0.537 · 0.650/0.635 · 0.748/0.758 · 0.854/0.825 · 0.956/0.955 (ห่างไม่เกิน 0.03 ทุกช่อง)
+- sanity (WP ของ T): 5v5 freeze end full buy (equip −2.5k) 44.9% · equip 0 49.8% · 5v4 90s 72.2% > 5v5 90s 46.9% ✓ · 4v4 40s ก่อน plant 45.7% → หลัง plant 67.6% ✓ · eco T (−15k) 23.3% · eco CT (+15k) 76.5% ✓
+- **FACEIT round-start WP** (demo 1-8020514f แยก ไม่รวม train, `data/parsed/wp_states_faceit.parquet` สร้างจาก `--faceit-demo`): team_haineieie เป็น T 5 รอบ เฉลี่ย **62.3%** (FACEIT ≈ 61%) · เป็น CT 12 รอบ **54.4%** (FACEIT ≈ 55%) (ชุด A ได้ 64.9% / 52.3%)
+
 ### 2.3 ข้อมูล
 - `data/train_demos/` (gitignored) + `data/train_demos/manifest.csv` (file, map, source=`faceit|premier|pro`, level, date)
 - v1: pub เท่านั้น (FACEIT/Premier), **เริ่ม 30 แมตช์ เป้า 100**, ≥ 5 แมตช์ต่อแมพ, pro ไม่ใช้ใน v1
@@ -106,6 +127,6 @@ Rating รวม (แบบ 1.70 ของ FACEIT) ยังไม่ทำ จ�
 1. เช็ค `.dem.zst`: env มี `zstandard` ไหม (ถ้าไม่มี หยุดถาม owner) แล้ว `inspect` demo FACEIT ได้
 2. RWS + validate กับ FACEIT (ง่ายสุด ได้ผลเร็ว)
 3. `wp_states` builder + CLI `wp-states DEMO...` (ยังไม่ train)
-4. Training + รายงาน §2.4 (รอ owner เก็บ demo ≥ 30)
+4. Training + รายงาน §2.4 ✅ (2026-11-05, §2.2.1)
 5. Credit assignment + `rating_events` + metric `impact` + invariant tests
 6. เทียบกับ FACEIT Swing / Leetify, ปรับ config, อัปเดต roadmap

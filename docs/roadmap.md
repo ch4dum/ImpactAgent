@@ -54,7 +54,8 @@
 
 ## ⏳ Phase 2: Ratings (สูตรของเราเอง ไม่ใช้ชื่อ Leetify)
 - [x] **`wp_states` builder + CLI `wp-states`** (impact-spec §6.3, ยังไม่ train, 2026-11-05): 1 แถว/state (freeze end, kill, plant, defuse, explode, round end) · features `t_alive`/`ct_alive`, `bomb_planted`, `time_left_s`, `equip_diff_k`, `map`, label `t_won` · column `trainable` แยกแถวที่ model ต้องทาย vs rule-fixed · ตัด validation match ด้วย fingerprint (map + จำนวนรอบ + สกอร์ + ชุด steam_id) · สร้าง `data/train_demos/manifest.csv` อัตโนมัติ ผล: 30/34 แมตช์ (ตัด 4 validation, 0 parse fail), 713 รอบ, 6,285 state (4,972 trainable); แมตช์/แมพ dust2 15 · mirage 6 · cache 4 · ancient 3 · inferno 2
-- [ ] Impact Rating: win-probability model + breakdown 9 หมวด
+- [x] **WP model v1 + CLI `train-wp`** (impact-spec §6.4 / §2.2.1, 2026-11-05): logistic L2 บน feature ที่ standardize (mean/std ใน `wp_model_v1.json`, predict numpy-only, sklearn เฉพาะ `train_wp.py` / extra `[train]`) · GroupKFold 5 ตามแมตช์ · ชุด D (A + map + alive_prod + ct_can_defuse) C=1: Brier 0.1472 log loss 0.4491 vs baseline 0.1638 / 0.4955 · reliability ห่าง ≤ 0.03 ทุกช่อง · FACEIT round-start WP T 62.3% (≈61) CT 54.4% (≈55)
+- [ ] Impact Rating: credit assignment + `rating_events` + breakdown 9 หมวด (impact-spec §6.5)
 - [ ] Aim / Utility / Positioning Score: แยกตามกลุ่มปืน (sniper / rifle / pistol) ไม่ให้ metric ที่เป็น n/a ดันคะแนน และบอกความมั่นใจตามขนาดตัวอย่าง (บทเรียนจาก Aim 100 ของ Leetify ในแมตช์ที่ใช้ AWP)
 
 ## ⏳ Phase 3: Backend
@@ -121,3 +122,5 @@
 | WP equip_diff_k | (Σ `current_equip_value` T − CT ของผู้เล่นที่ยังรอด)/1000 ณ state tick นับ "รอด" จาก kills; อ่าน tick data เฉพาะ tick ที่เป็น state ไม่เก็บทั้งเกม (2026-11-05) |
 | `parse_demo(fast=)` | `fast=True` ข้าม trade_windows + aim/visibility (ตาราง event เหมือนเดิมทุกกรณี); default `False` (2026-11-05) |
 | match fingerprint | map + จำนวนรอบ + สกอร์ (T−CT) + ชุด steam_id; ใช้ตัด validation match ออกจาก train (2026-11-05) |
+| WP feature set | ชุด D แม้ CV log loss แพ้ชุด A 0.002 (< std ระหว่าง fold): A ให้ `time_left_post` ผิดทิศ; `ct_can_defuse` ใช้เกณฑ์ ≥ 10s เพราะ wp_states ยังไม่มีข้อมูล kit (2026-11-05) |
+| WP training | weight = 1/แถว trainable ต่อรอบ, standardize feature, C จาก {0.01, 0.1, 1, 10}, แยก fold ตามแมตช์; แมตช์ FACEIT validation ใช้เช็ค round-start WP เท่านั้น ไม่ train (2026-11-05) |

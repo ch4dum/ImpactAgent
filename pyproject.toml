@@ -18,6 +18,9 @@ dependencies = [
 [project.optional-dependencies]
 # Raycast visibility backend (impactagent/visibility). awpy 3.1 needs polars>=2 (demoparser2 0.42 works with it).
 visibility = ["awpy>=3.1.1"]
+# WP-model training (impactagent/ratings). scikit-learn is used only to FIT the model; the
+# saved model is plain JSON and predict_wp runs on numpy alone (no sklearn at inference).
+train = ["scikit-learn>=1.3"]
 
 [tool.setuptools.packages.find]
 include = ["impactagent*"]
