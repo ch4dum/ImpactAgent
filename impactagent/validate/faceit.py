@@ -55,6 +55,63 @@ def _name_map(p) -> tuple[dict[str, str], dict[str, str]]:
     return exact, ci
 
 
+class PlayerMatchError(ValueError):
+    """Some FACEIT players could not be matched to a demo player."""
+
+
+def match_players(truth_path: str | Path, p, tables=None) -> dict[str, str]:
+    """FACEIT nickname -> steam_id for every player in the truth tables.
+
+    1. optional truth key "aliases": {"<in-game name>": "<FACEIT name>"};
+    2. exact, then case-insensitive name;
+    3. elimination: inside one team (FACEIT table order <-> demo team `a`/`b` by the
+       matched players), one name left on each side -> matched (printed).
+    Raises PlayerMatchError listing the names still unmatched (never skips silently).
+    """
+    raw = json.loads(Path(truth_path).read_text(encoding="utf-8"))
+    tables = tables or load_tables(truth_path)
+    exact, ci = _name_map(p)
+    alias = {str(fn): str(gn) for gn, fn in (raw.get("aliases") or {}).items()}
+    team_of_sid = dict(zip(p.players["steam_id"], p.players["team"]))
+
+    # FACEIT team index of each name (first tab|side that lists it).
+    fteam: dict[str, int] = {}
+    for teams in tables.values():
+        for ti, team in enumerate(teams):
+            for name in team:
+                fteam.setdefault(name, ti)
+
+    sid_of: dict[str, str] = {}
+    for name in sorted(fteam):
+        game = alias.get(name, name)
+        sid = exact.get(game) or ci.get(game.casefold())
+        if sid is not None:
+            sid_of[name] = sid
+
+    used = set(sid_of.values())
+    for ti in sorted(set(fteam.values())):
+        names = [n for n, t in fteam.items() if t == ti]
+        left = [n for n in names if n not in sid_of]
+        votes = pd.Series([team_of_sid.get(sid_of[n]) for n in names if n in sid_of]).value_counts()
+        if not left or votes.empty:
+            continue
+        dteam = votes.index[0]
+        free = [s for s, t in team_of_sid.items() if t == dteam and s not in used]
+        if len(left) == 1 and len(free) == 1:
+            sid_of[left[0]] = free[0]
+            used.add(free[0])
+            game = p.players.set_index("steam_id").at[free[0], "name"]
+            print(f"matched by elimination: FACEIT {left[0]!r} <-> demo {game!r} ({free[0]})")
+
+    missing = sorted(n for n in fteam if n not in sid_of)
+    if missing:
+        raise PlayerMatchError(
+            "FACEIT players not matched to a demo player: " + ", ".join(missing)
+            + ' (add "aliases": {"<in-game name>": "<FACEIT name>"} to the truth JSON)'
+        )
+    return sid_of
+
+
 def _our_value(ours: pd.DataFrame, played: dict[str, pd.Series], metric: str, side: str) -> pd.Series:
     if metric == "RWS":
         return {"All": ours["rws"], "CT": ours["rws_ct"], "T": ours["rws_t"]}[side]
@@ -70,7 +127,11 @@ def run(demo: str | Path, truth_path: str | Path) -> int:
     p = parse_demo(demo)
     ours = compute_match_metrics(p)
     tables = load_tables(truth_path)
-    exact, ci = _name_map(p)
+    try:
+        sid_of = match_players(truth_path, p, tables)
+    except PlayerMatchError as exc:
+        print("FAIL:", exc)
+        return 1
 
     pr = p.player_rounds_side
     played = {
@@ -81,17 +142,6 @@ def run(demo: str | Path, truth_path: str | Path) -> int:
 
     # Every player name across all tab|side tables (a player appears in all 3 scopes).
     all_names = sorted({n for teams in tables.values() for team in teams for n in team})
-    sid_of: dict[str, str] = {}
-    missing = []
-    for name in all_names:
-        if name in exact:
-            sid_of[name] = exact[name]
-        elif name.casefold() in ci:
-            sid_of[name] = ci[name.casefold()]
-        else:
-            missing.append(name)
-    if missing:
-        print("FACEIT players not matched to a demo player:", ", ".join(missing))
 
     off = 0
     for metric, (tab, col, cast) in METRICS.items():

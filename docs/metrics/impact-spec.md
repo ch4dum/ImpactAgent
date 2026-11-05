@@ -155,6 +155,11 @@ part อื่น: damage ของเพื่อน (ไม่ใช่ attack
   - mirage ρ ต่ำ เพราะคนที่ค่าใกล้ 0 สลับลำดับกัน (Boonrywaa ของเรา +4.6 vs Leetify +0.9; J −0.6 vs +1.7)
   - ค่า Leetify เป็น calibration data เก็บใน gitignored `data/validation/` เท่านั้น
 
+- **FACEIT แมตช์ที่ 2** (mirage-4cb4009a, อยู่ในชุด train ของ WP → ดูดีเกินจริงได้): invariant ผ่านทั้ง 2 โหมด
+  - none: Pearson All 0.981 / T 0.972 / CT 0.967, MAE 0.74 / 2.41 / 2.10 · survivors: 0.973 / 0.975 / 0.949, MAE 0.85 / 2.03 / 1.84 · ลำดับในทีม ρ 0.90 / 1.00 ทั้ง 2 โหมด
+  - **รวม 2 แมตช์ (20 คน)** none → survivors: Pearson All 0.916 → 0.929, T 0.921 → 0.920, CT 0.905 → 0.916 · MAE All 1.62 → 1.58, T 2.71 → 2.57, CT 2.60 → 2.11 ⇒ survivors ดีกว่าเล็กน้อยโดยรวม ยังไม่ชัดพอจะเปลี่ยน default
+  - ผลรวมทีมแยกฝั่งต่าง FACEIT มาก: team 1 ฝั่ง T ours +8.4 (none) vs FACEIT −3.1, ฝั่ง CT +2.3 vs +13.6 → WP เริ่มรอบของ FACEIT บน mirage ให้ T สูงกว่าเรา ~11 pp ต่อรอบ (ของเรา map_mirage เป็นลบ) ทั้งที่ All ตรง (+5.3 vs +5.3)
+
 ## 4. RWS
 - รอบที่ทีมชนะ: 100 แต้มแบ่งตามสัดส่วน damage ใส่ศัตรูในรอบนั้น (ไม่นับ team damage)
 - **damage = sequential** ไม่ใช่ `dmg_effective`: แต่ละ hit cap ที่ HP ที่เหลือก่อนโดน (`min(dmg_raw, HP_remaining)`) เรียงตามลำดับ event ต่อ (รอบ, เหยื่อ) ส่วน `dmg_effective` รวม hit ใน tick ที่เหยื่อตายเป็นกลุ่มเดียว ("killing tick = hits รวมกัน = HP ก่อน tick") ซึ่งทำให้ RWS ต่างจาก FACEIT ใน kill tick ที่มีหลาย hit พร้อมกัน (shotgun / หลายคนยิงตายใน tick เดียว)
@@ -163,6 +168,24 @@ part อื่น: damage ของเพื่อน (ไม่ใช่ attack
 - รอบที่แพ้ = 0 · ค่าแมตช์ = เฉลี่ยต่อรอบที่เล่น · scopes `[all, CT, T]`
 - edge case: ทีมชนะที่ทำ damage รวม 0 (ชนะหมดเวลา/ศัตรู save) → แบ่งเท่ากันในคนที่เล่นรอบนั้น (match นี้เจอ 0 รอบ)
 - variant ที่ทดสอบ (2b, mean / max abs err เทียบ FACEIT 30 ช่อง): base `dmg_effective` 0.019/0.094 · ตัด damage หลังรอบจบ 0.029/0.094 (แย่ลง) · cap (attacker,victim,round)=100 0.019/0.094 (ไม่เปลี่ยน) · **sequential 0.002/0.005 ✓ (ตรง 30/30 ±0.01)**
+- **แมตช์ที่ 2** (mirage-4cb4009a, 2026-11-05; อยู่ในชุด train ของ WP): ชื่อในเกมต่างจาก FACEIT 2 คน (`krvmz` ↔ krvmzy, `Riend-` ↔ RESURECTON-; validate-faceit ยังไม่มี alias) · ถ้า map ชื่อแล้ว **off 10/30**: ฝั่ง T ตรงทุกคน (±0.004) แต่ CT ของ team b (รอบ 13–24) ผิด JungYoon −0.157, krvmzy +0.066, teng +0.038, pure666 +0.027, RESURECTON- +0.022 (ผลรวมทีม ≈ 0 → แบ่ง 100 แต้มต่างกัน ไม่ใช่จำนวนรอบ) · สมมติฐานที่ลองแล้ว ไม่ดีขึ้น: ตัด damage หลัง round end (16/30), ตัดก่อน freeze end (10/30), cap ด้วย `victim_hp_after` ของเกม (19/30), team hit ไม่ลด HP (15/30) → ยังไม่รู้สาเหตุ, rws คง `calibrating`
+- รอบ CT ของ team b (mirage): t_killed 15, 16, 19, 21, 23, 24 · ct_killed 14, 17 · bomb_exploded 13, 18 · bomb_defused 20 · **time_ran_out 22** · disconnect: -pure666 รอบ 2 และ 24 (dust2 ไม่มีทั้งหมดเวลาและ disconnect) · ส่วนต่างของ JungYoon รวมแค่ ~1.9 แต้มใน 12 รอบ (≈ damage 10 HP ในรอบเดียว)
+- กฎที่ทดลอง (scratch, off/30 dust2 · mirage; ต้อง dust2 30/30 ด้วย):
+
+| กฎ | dust2 | mirage |
+|---|---|---|
+| base (rws.py ปัจจุบัน) | 0 | 10 (max 0.157) |
+| (ก) หมดเวลา: 100 แบ่งเท่าคนรอดฝั่งชนะ | 0 | 10 (max 8.36) |
+| (ก') หมดเวลา: แบ่งตาม damage เฉพาะคนรอด | 0 | 10 (max 8.36) |
+| (ข) หมดเวลา: ตาม damage, รวม 0 → แบ่งเท่า | = base (rws.py ทำอยู่แล้ว; รอบ 22 มี damage) | = base |
+| (ค) defuse ไม่มีโบนัส 30 (เช็คว่าโบนัสใช้อยู่) | 10 | 18 → **โบนัส 30 + 70 ถูกแล้ว** |
+| (ง) damage ใส่คนที่ disconnect ไม่นับ | 0 | 10 (ไม่เปลี่ยน) |
+| (ง') + คน disconnect ไม่ได้ส่วนแบ่ง | 0 | 10 (max 4.76) |
+| (จ) damage ตัวเอง/world (C4 100, molotov 24) ไม่ลด HP | 0 | **8** (max 0.213) |
+| (ฉ) เฉพาะ enemy hit ลด HP | 0 | 14 |
+| (ช) ไม่ cap (dmg_raw) | 25 | 30 |
+
+  ⇒ ไม่มีกฎที่ได้ 30/30 ทั้ง 2 แมตช์ ไม่แก้ rws.py · (จ) ดีขึ้นนิดแต่ max แย่ลง ต้องมีแมตช์ที่ 3 หรือ per-round truth
 - `status: exact` เมื่อตรง FACEIT ครบ 10 คน × 3 scope (ตอนนี้ 1 แมตช์ 30/30 → ยัง `calibrating`; เลื่อนเป็น exact เมื่อแมตช์ที่ 2 ตรง)
 
 ## 5. Validation

@@ -33,18 +33,18 @@ def _pct_str(s) -> float:
 
 
 def _faceit_swing(truth_path, p) -> pd.DataFrame:
-    """FACEIT Swing per steam_id: team (1/2 = table order), swing, swing_t, swing_ct."""
-    from impactagent.validate.faceit import _name_map, load_tables
+    """FACEIT Swing per steam_id: team (1/2 = table order), swing, swing_t, swing_ct.
+    Players are matched like validate-faceit (aliases, name, elimination); raises
+    PlayerMatchError if any stays unmatched."""
+    from impactagent.validate.faceit import load_tables, match_players
 
     tables = load_tables(truth_path)
-    exact, ci = _name_map(p)
+    sid_of = match_players(truth_path, p, tables)
     rows: dict[str, dict] = {}
     for side, col in (("All", "swing"), ("T", "swing_t"), ("CT", "swing_ct")):
         for ti, team in enumerate(tables.get(("General", side), []), start=1):
             for name, vals in team.items():
-                sid = exact.get(name) or ci.get(name.casefold())
-                if sid is not None:
-                    rows.setdefault(sid, {"team": ti})[col] = _pct_str(vals["Swing"])
+                rows.setdefault(sid_of[name], {"team": ti})[col] = _pct_str(vals["Swing"])
     return pd.DataFrame.from_dict(rows, orient="index")
 
 
@@ -140,7 +140,14 @@ def run_impact(demo, out_dir=None, faceit=None, breakdown: bool = False, time_cr
         print(f"  -> {Path(out_dir) / 'rating_events.parquet'}, player_round_ratings.parquet")
 
     if faceit:
-        tab = tab.join(_faceit_swing(faceit, p)).sort_values(["team", "impact"], ascending=[True, False])
+        from impactagent.validate.faceit import PlayerMatchError
+
+        try:
+            fs = _faceit_swing(faceit, p)
+        except PlayerMatchError as exc:
+            print("FAIL:", exc)
+            return 1
+        tab = tab.join(fs).sort_values(["team", "impact"], ascending=[True, False])
         _print_faceit(tab)
     else:
         tab = tab.sort_values("impact", ascending=False)
