@@ -84,11 +84,14 @@ Rating รวม (แบบ 1.70 ของ FACEIT) ยังไม่ทำ จ�
 - invariant ที่ต้อง assert: Σ ทุกคนในรอบ ≈ 0 และ Σ ฝั่ง T = outcome_T − wp_start
 
 ## 4. RWS
-- รอบที่ทีมชนะ: 100 แต้มแบ่งตามสัดส่วน damage (`dmg_effective` ใส่ศัตรู, ไม่นับ team damage) ในรอบนั้น
+- รอบที่ทีมชนะ: 100 แต้มแบ่งตามสัดส่วน damage ใส่ศัตรูในรอบนั้น (ไม่นับ team damage)
+- **damage = sequential** ไม่ใช่ `dmg_effective`: แต่ละ hit cap ที่ HP ที่เหลือก่อนโดน (`min(dmg_raw, HP_remaining)`) เรียงตามลำดับ event ต่อ (รอบ, เหยื่อ) ส่วน `dmg_effective` รวม hit ใน tick ที่เหยื่อตายเป็นกลุ่มเดียว ("killing tick = hits รวมกัน = HP ก่อน tick") ซึ่งทำให้ RWS ต่างจาก FACEIT ใน kill tick ที่มีหลาย hit พร้อมกัน (shotgun / หลายคนยิงตายใน tick เดียว)
+- team damage ไม่นับเป็นแต้ม แต่ยังลด HP ของเหยื่อในลำดับ sequential (enemy hit ที่ตามหลัง team hit จึงถูก cap ต่ำลง)
 - ชนะด้วยระเบิดระเบิด → planter ได้ 30, อีก 70 แบ่งตาม damage · ชนะด้วยการกู้ → defuser ได้ 30, 70 ตาม damage
 - รอบที่แพ้ = 0 · ค่าแมตช์ = เฉลี่ยต่อรอบที่เล่น · scopes `[all, CT, T]`
-- edge case ที่ต้องเช็คกับ FACEIT: ทีมชนะที่ทำ damage รวม 0 (ชนะหมดเวลา/ศัตรู save) → แบ่งเท่ากัน?
-- `status: exact` เมื่อตรง FACEIT ครบ 10 คน × 3 scope
+- edge case: ทีมชนะที่ทำ damage รวม 0 (ชนะหมดเวลา/ศัตรู save) → แบ่งเท่ากันในคนที่เล่นรอบนั้น (match นี้เจอ 0 รอบ)
+- variant ที่ทดสอบ (2b, mean / max abs err เทียบ FACEIT 30 ช่อง): base `dmg_effective` 0.019/0.094 · ตัด damage หลังรอบจบ 0.029/0.094 (แย่ลง) · cap (attacker,victim,round)=100 0.019/0.094 (ไม่เปลี่ยน) · **sequential 0.002/0.005 ✓ (ตรง 30/30 ±0.01)**
+- `status: exact` เมื่อตรง FACEIT ครบ 10 คน × 3 scope (ตอนนี้ 1 แมตช์ 30/30 → ยัง `calibrating`; เลื่อนเป็น exact เมื่อแมตช์ที่ 2 ตรง)
 
 ## 5. Validation
 | สิ่งที่เช็ค | truth | เกณฑ์ |

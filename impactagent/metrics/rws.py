@@ -8,6 +8,7 @@ rounds the player actually played, split by side (all / CT / T).
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from impactagent.parse.demo import ParsedDemo
@@ -16,14 +17,40 @@ BOMB_BONUS = 30.0  # fixed points for planter (bomb_exploded) / defuser (bomb_de
 BOMB_SHARE = 70.0  # points split by damage share after the bomb bonus
 
 
+def _sequential_enemy_damage(damages: pd.DataFrame) -> pd.Series:
+    """Effective damage per enemy hit, capping each hit at the victim's HP left before it.
+
+    FACEIT RWS splits damage sequentially: when several hits land on a dying victim in one
+    tick, each is capped at the HP still left in event order — NOT grouped the way the
+    Leetify `dmg_effective` does ("killing tick = all hits together = HP before tick").
+    Team/world damage still depletes the victim's HP in the same order (so an enemy hit
+    after a team hit is capped lower), but only enemy hits are returned. Order is
+    deterministic: (round, victim, tick), then the parser's original event order within a
+    tick (a stable sort preserves it).
+    """
+    d = damages.sort_values(["round_no", "victim_id", "tick"], kind="mergesort").reset_index(drop=True)
+    eff = np.zeros(len(d), dtype=float)
+    hp: dict[tuple[int, str], float] = {}
+    for i, row in d.iterrows():
+        key = (int(row["round_no"]), row["victim_id"])
+        rem = hp.get(key, 100.0)
+        e = min(float(row["dmg_raw"]), rem)
+        hp[key] = max(0.0, rem - e)
+        if pd.notna(row["attacker_id"]) and not bool(row["is_team"]):
+            eff[i] = e
+    return pd.Series(eff, index=d.index)
+
+
 def rws_metrics(p: ParsedDemo) -> pd.DataFrame:
     """-> DataFrame indexed by steam_id with columns rws (all), rws_ct, rws_t."""
     ids = p.players["steam_id"]
     out = pd.DataFrame(index=pd.Index(ids, name="steam_id"))
 
-    # Effective damage to enemies (team damage excluded), summed per (round, player).
-    dmg = p.damages[~p.damages["is_team"] & p.damages["attacker_id"].notna()]
-    dmg_sum = dmg.groupby(["round_no", "attacker_id"])["dmg_effective"].sum()
+    # Sequential effective damage to enemies, summed per (round, player). Team damage is
+    # excluded from the points but still depletes HP in the sequential order (impact-spec §4).
+    seq = _sequential_enemy_damage(p.damages)
+    dmg = p.damages.assign(dmg_sequential=seq.to_numpy())
+    dmg_sum = dmg.groupby(["round_no", "attacker_id"])["dmg_sequential"].sum()
 
     # planter / defuser per round (first plant / defuse event in the round).
     planter: dict[int, str] = {}
