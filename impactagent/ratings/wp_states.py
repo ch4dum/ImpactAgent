@@ -4,7 +4,9 @@ One row per "state": freeze end, then after every state-changing event — kill 
 world / team kill included), bomb plant, defuse, explode, round end. Features are from the
 T side's point of view. Derived data; no per-tick data is stored — equipment value and
 defuse kits (`ct_has_kit`: a CT alive after the event has a kit) are sampled only at the
-state ticks (via `parse_ticks` on the exact ticks we need).
+state ticks (via `parse_ticks` on the exact ticks we need). `ct_defusing` /
+`ct_defusing_pre` flag a defuse in progress that will finish in time, right after / right
+before the event (from bomb_begindefuse; no extra states are added).
 
 `trainable` marks which rows the WP model must predict. The rest have a WP fixed by rule
 (§2.2 / round-end, defuse, explode, and rounds already decided by alive count).
@@ -25,8 +27,11 @@ from impactagent.parse.demo import _demo_file, _sid, parse_demo
 STATE_COLUMNS = [
     "match_id", "map", "round_no", "tick", "event_type", "event_ref",
     "t_alive", "ct_alive", "bomb_planted", "time_left_s", "equip_diff_k", "ct_has_kit",
-    "t_won", "trainable",
+    "ct_defusing", "ct_defusing_pre", "t_won", "trainable",
 ]
+
+# Ticks a defuse may run past its nominal duration before we treat it as let go.
+DEFUSE_END_SLACK_TICKS = 2
 
 # Event priority within one tick (for a stable order when two kinds share a tick).
 _EVENT_PRIO = {"freeze_end": 0, "kill": 1, "plant": 2, "defuse": 2, "explode": 2, "round_end": 3}
@@ -132,6 +137,63 @@ def _iter_states(p, tickrate: int):
             }
 
 
+def _read_defuse_starts(parser: DemoParser) -> pd.DataFrame:
+    """bomb_begindefuse / bomb_abortdefuse -> tick, sid, kind ("begin" | "abort"), haskit."""
+    frames = []
+    for ev, kind in (("bomb_begindefuse", "begin"), ("bomb_abortdefuse", "abort")):
+        d = pd.DataFrame(parser.parse_event(ev))
+        if d.empty:
+            continue
+        haskit = d["haskit"].fillna(False).astype(bool) if "haskit" in d else False
+        frames.append(pd.DataFrame({"tick": d["tick"].astype("int64"), "sid": _sid(d["user_steamid"]),
+                                    "kind": kind, "haskit": haskit}))
+    if not frames:
+        return pd.DataFrame(columns=["tick", "sid", "kind", "haskit"])
+    return pd.concat(frames, ignore_index=True).sort_values("tick", kind="stable").reset_index(drop=True)
+
+
+def _defuse_intervals(p, defs: pd.DataFrame, c4: float) -> dict[int, list[tuple[int, int, object]]]:
+    """round_no -> [(begin_tick, end_tick, defuser sid)] of defuses that can finish in time.
+
+    A defuse counts only if it began (bomb_begindefuse) with C4 time left >= the defuser's
+    own defuse time (5 s with a kit, `haskit` of the event; 10 s without). It runs until
+    the first of: its full duration (+ DEFUSE_END_SLACK_TICKS), bomb_defused, the
+    defuser's death, a bomb_abortdefuse or a new bomb_begindefuse by the same player
+    (CS2 demos carry no abort event in practice). Letting go is seen only in the
+    defuser's `is_defusing` prop, which the caller checks at the tick. Reading
+    "begin <= t < end" at tick t only needs events up to t (no ending event yet), so the
+    flag has no look-ahead.
+    """
+    from impactagent.ratings.wp_model import DEFUSE_S_KIT, DEFUSE_S_NO_KIT
+
+    out: dict[int, list[tuple[int, int]]] = {}
+    if defs.empty:
+        return out
+    kills = p.kills
+    defused = p.bomb[p.bomb["type"] == "defuse"]
+    for _, r in p.rounds.iterrows():
+        if pd.isna(r["plant_tick"]):
+            continue
+        rno, plant, end = int(r["round_no"]), int(r["plant_tick"]), int(r["end_tick"])
+        rd = defs[(defs["tick"] >= plant) & (defs["tick"] <= end)]
+        if rd.empty:
+            continue
+        rk = kills[(kills["round_no"] == rno) & (kills["tick"] >= plant)]
+        rdf = defused[defused["round_no"] == rno]["tick"].astype(int).tolist()
+        for i, b in rd[rd["kind"] == "begin"].iterrows():
+            bt = int(b["tick"])
+            need = DEFUSE_S_KIT if bool(b["haskit"]) else DEFUSE_S_NO_KIT
+            if c4 - (bt - plant) / p.tickrate < need - 1.0 / p.tickrate:
+                continue  # started too late: cannot finish before the explosion
+            ends = [bt + int(round(need * p.tickrate)) + DEFUSE_END_SLACK_TICKS, end]
+            ends += [t for t in rdf if t >= bt]
+            ends += [int(t) for t in rk.loc[rk["victim_id"] == b["sid"], "tick"] if t >= bt]
+            same = rd[(rd["sid"] == b["sid"]) & (rd.index > i) & (rd["tick"] >= bt)]
+            ends += [int(t) for t in same["tick"]]
+            out.setdefault(rno, []).append((bt, min(ends), b["sid"]))
+    return out
+
+
 def _read_timers_and_equip(dem_path: Path, state_ticks: list[int]):
     """Open the demo a second time: read server_cvar (mp_roundtime/mp_c4timer) and sample
     equipment value only at the state ticks. -> (round_time_s, c4_timer_s, equip_df, warns)."""
@@ -156,15 +218,20 @@ def _read_timers_and_equip(dem_path: Path, state_ticks: list[int]):
     elif abs(c4 - C4_TIMER_S) > TIMER_WARN_SECONDS:
         warns.append(f"mp_c4timer={c4:.1f}s differs from constant {C4_TIMER_S}s")
 
-    eq = pd.DataFrame(parser.parse_ticks(["team_num", "current_equip_value", "has_defuser"], ticks=state_ticks))
+    # tick - 1 too: `is_defusing` right before an event (the pre-event defuse flag).
+    ticks = sorted(set(state_ticks) | {t - 1 for t in state_ticks})
+    eq = pd.DataFrame(parser.parse_ticks(
+        ["team_num", "current_equip_value", "has_defuser", "is_defusing"], ticks=ticks))
     if eq.empty:
-        eq = pd.DataFrame(columns=["tick", "steamid", "team_num", "current_equip_value", "has_defuser"])
+        eq = pd.DataFrame(columns=["tick", "steamid", "team_num", "current_equip_value",
+                                   "has_defuser", "is_defusing"])
     eq["sid"] = _sid(eq["steamid"])
     eq = eq[eq["sid"].notna() & eq["team_num"].isin([2, 3])].copy()
     eq["side"] = eq["team_num"].map(SIDE_BY_TEAM_NUM)
     eq["value"] = eq.get("current_equip_value", 0).fillna(0).astype(float)
     eq["kit"] = eq.get("has_defuser", False).fillna(False).astype(bool)
-    return rt, c4, eq, warns
+    eq["defusing"] = eq.get("is_defusing", False).fillna(False).astype(bool)
+    return rt, c4, eq, _read_defuse_starts(parser), warns
 
 
 def build_wp_states(p) -> tuple[pd.DataFrame, dict]:
@@ -177,9 +244,11 @@ def build_wp_states(p) -> tuple[pd.DataFrame, dict]:
 
     dem_path = p.path
     with _demo_file(dem_path) as (plain, _sha):
-        rt, c4, eq, timer_warns = _read_timers_and_equip(plain, state_ticks)
+        rt, c4, eq, defs, timer_warns = _read_timers_and_equip(plain, state_ticks)
     eq_by_tick_sid = eq.set_index(["tick", "sid"])["value"].to_dict()
     kit_by_tick_sid = eq.set_index(["tick", "sid"])["kit"].to_dict()
+    dfs_by_tick_sid = eq.set_index(["tick", "sid"])["defusing"].to_dict()
+    defusing = _defuse_intervals(p, defs, c4)
 
     rows = []
     n_neg_time = 0
@@ -227,6 +296,14 @@ def build_wp_states(p) -> tuple[pd.DataFrame, dict]:
             for sid in alive_sids
             if side_of.get(sid) == "CT"
         )
+        # A defuse that can finish in time is running right after (post: tick) / right
+        # before (pre: tick - 1) the event: begun in time (_defuse_intervals) and the
+        # defuser still holds it (`is_defusing`; CS2 has no abort event).
+        ivs = defusing.get(s["round_no"], [])
+        ct_defusing = any(b <= tick < e and dfs_by_tick_sid.get((tick, sid), False)
+                          for b, e, sid in ivs)
+        ct_defusing_pre = any(b < tick <= e and dfs_by_tick_sid.get((tick - 1, sid), False)
+                              for b, e, sid in ivs)
 
         # Assert: a kill of a T must not RAISE equip_diff (T side lost equipment), and a
         # kill of a CT must not LOWER it — relative to the previous state of this round.
@@ -269,6 +346,8 @@ def build_wp_states(p) -> tuple[pd.DataFrame, dict]:
                 "time_left_s": time_left,
                 "equip_diff_k": equip_diff_k,
                 "ct_has_kit": ct_has_kit,
+                "ct_defusing": ct_defusing,
+                "ct_defusing_pre": ct_defusing_pre,
                 "t_won": s["t_won"],
                 "trainable": _trainable(s["event_type"], s["t_alive"], s["ct_alive"], s["bomb_planted"]),
             }
@@ -281,6 +360,8 @@ def build_wp_states(p) -> tuple[pd.DataFrame, dict]:
     df["ct_alive"] = df["ct_alive"].astype("int64")
     df["bomb_planted"] = df["bomb_planted"].astype("int8")
     df["ct_has_kit"] = df["ct_has_kit"].astype(bool)
+    df["ct_defusing"] = df["ct_defusing"].astype(bool)
+    df["ct_defusing_pre"] = df["ct_defusing_pre"].astype(bool)
     df["t_won"] = df["t_won"].astype("int8")
     df["trainable"] = df["trainable"].astype(bool)
     stats = {

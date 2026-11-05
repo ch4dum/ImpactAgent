@@ -55,6 +55,10 @@ def feature_matrix(states: pd.DataFrame, features: list[str]) -> np.ndarray:
     else:
         kit = np.zeros(len(states), dtype=bool)
     need = np.where(kit, DEFUSE_S_KIT, DEFUSE_S_NO_KIT)
+    if "ct_defusing" in states:  # a defuse in progress that will finish in time
+        defusing = states["ct_defusing"].fillna(False).to_numpy(dtype=bool)
+    else:
+        defusing = np.zeros(len(states), dtype=bool)
 
     cols = {
         "t_alive": t_alive,
@@ -64,9 +68,10 @@ def feature_matrix(states: pd.DataFrame, features: list[str]) -> np.ndarray:
         "time_left_post": np.where(planted == 1, time_left, 0.0),
         "equip_diff_k": states["equip_diff_k"].to_numpy().astype(float),
         "alive_prod": t_alive * ct_alive,
-        # 1 after the plant while a surviving CT still has time to defuse; 0 otherwise
+        # 1 after the plant while a surviving CT still has time to defuse (5 s with a kit,
+        # 10 s without) or a defuse that will finish in time is already running; 0 otherwise
         # (pre-plant it is 0, so it acts as an interaction with bomb_planted).
-        "ct_can_defuse": ((planted == 1) & (time_left >= need)).astype(float),
+        "ct_can_defuse": ((planted == 1) & ((time_left >= need) | defusing)).astype(float),
         # 1 after the plant while a surviving CT has a kit (CV candidate, set E).
         "ct_has_kit": ((planted == 1) & kit).astype(float),
     }

@@ -133,10 +133,10 @@ def _manifest_hash(df: pd.DataFrame) -> str:
 
 def _sanity(model: dict) -> list[tuple[str, float]]:
     """Hand-made states -> WP_T (impact-spec §2.4)."""
-    def st(t, ct, bomb=0, tl=115.0, eq=0.0, m="de_dust2"):
+    def st(t, ct, bomb=0, tl=115.0, eq=0.0, m="de_dust2", kit=False, defusing=False):
         return {"t_alive": t, "ct_alive": ct, "bomb_planted": bomb, "time_left_s": tl,
                 "equip_diff_k": eq, "map": m, "event_type": "freeze_end", "trainable": True,
-                "t_won": 0}
+                "t_won": 0, "ct_has_kit": kit, "ct_defusing": defusing}
 
     # Full buy: T 5×~4.7k = 23.5k, CT 5×~5.2k = 26k -> equip_diff ≈ -2.5k.
     cases = [
@@ -149,7 +149,9 @@ def _sanity(model: dict) -> list[tuple[str, float]]:
         ("2v2 planted, 30s left", st(2, 2, bomb=1, tl=30)),
         ("2v2 planted, 12s left", st(2, 2, bomb=1, tl=12)),
         ("2v2 planted, 8s left (CT can't defuse w/o kit)", st(2, 2, bomb=1, tl=8)),
+        ("2v2 planted, 8s left, CT has a kit", st(2, 2, bomb=1, tl=8, kit=True)),
         ("2v2 planted, 3s left", st(2, 2, bomb=1, tl=3)),
+        ("2v2 planted, 3s left, defuse in progress", st(2, 2, bomb=1, tl=3, defusing=True)),
         ("5v5 eco T (eq -15k)", st(5, 5, eq=-15.0)),
         ("5v5 eco CT (eq +15k)", st(5, 5, eq=15.0)),
     ]

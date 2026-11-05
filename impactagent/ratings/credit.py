@@ -78,6 +78,10 @@ def _state_wps(states: pd.DataFrame, model: dict, tickrate: int) -> tuple[np.nda
         ("ct_has_kit",) if "ct_has_kit" in st else ())
     for c in carry:
         pre[c] = np.where(first, st[c], prev[c])
+    # A defuse begun between the previous state and e is not in the previous state: the
+    # pre-event flag comes from e's own row (same tick, before e).
+    if "ct_defusing_pre" in st:
+        pre["ct_defusing"] = np.where(first, st["ct_defusing"], st["ct_defusing_pre"])
     pre["time_left_s"] = np.where(
         first, st["time_left_s"], prev["time_left_s"] - (st["tick"] - prev["tick"]) / tickrate
     )
