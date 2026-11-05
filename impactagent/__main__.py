@@ -86,6 +86,12 @@ def _cmd_validate_all(args: argparse.Namespace) -> int:
     return validate_all(args.dir, metrics=args.metrics)
 
 
+def _cmd_validate_faceit(args: argparse.Namespace) -> int:
+    from impactagent.validate.faceit import run
+
+    return run(args.demo, args.truth)
+
+
 def _cmd_visibility(args: argparse.Namespace) -> int:
     from impactagent.visibility.report import run
 
@@ -127,6 +133,11 @@ def main(argv: list[str] | None = None) -> int:
     va.add_argument("--dir", default="data/validation")
     va.add_argument("--metrics", nargs="*", help="only these metrics")
     va.set_defaults(func=_cmd_validate_all)
+
+    vf = sub.add_parser("validate-faceit", help="compare our metrics with a FACEIT scoreboard JSON")
+    vf.add_argument("demo", type=Path)
+    vf.add_argument("truth", type=Path)
+    vf.set_defaults(func=_cmd_validate_faceit)
 
     vis = sub.add_parser("visibility", help="kill visibility report per backend (needs .[visibility])")
     vis.add_argument("demos", nargs="+", type=Path)

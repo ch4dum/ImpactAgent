@@ -196,6 +196,19 @@
   scopes: [all]
   status: exact
 
+- id: rws
+  label: RWS
+  category: rating
+  unit: rating
+  format: "0.00"
+  direction: higher_better
+  aggregation: mean
+  source: winning rounds split 100 points by effective-damage share (bomb rounds give the planter/defuser 30 then split 70); lost rounds 0; mean over rounds played
+  scopes: [all, CT, T]
+  ref: docs/metrics/impact-spec.md#4-rws
+  note: our own definition; FACEIT comparison within ~0.01-0.04 per cell (impact-spec §4/§5)
+  status: calibrating
+
 - id: opening_attempt_pct
   label: Opening Duel Rate
   category: general

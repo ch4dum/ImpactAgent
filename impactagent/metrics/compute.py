@@ -22,6 +22,7 @@ from impactagent.constants import (
     TRADE_WINDOW_SECONDS,
 )
 from impactagent.metrics.aim import aim_metrics
+from impactagent.metrics.rws import rws_metrics
 from impactagent.parse.demo import ParsedDemo
 
 
@@ -371,5 +372,6 @@ def compute_match_metrics(p: ParsedDemo) -> pd.DataFrame:
     trades = trade_metrics(p)
     clutch = clutch_metrics(p, build_clutches(replace(p, kills=all_kills)))
     aim = aim_metrics(p)
+    rws = rws_metrics(p)
     names = p.players.set_index("steam_id")[["name", "team"]]
-    return names.join(gen).join(util).join(trades).join(clutch).join(aim)
+    return names.join(gen).join(util).join(trades).join(clutch).join(aim).join(rws)
