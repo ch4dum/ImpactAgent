@@ -136,7 +136,7 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, **fla
 
 Key: (match_id, round_no, seq, sub, part, side, steam_id). `player_round_ratings.parquet` (match_id, round_no, steam_id, side, rating) = `player_rounds.rating`
 
-**`state_ticks`** (Phase 3, ยังไม่ implement, backend.md §6.2): snapshot ณ ทุก state tick และ tick − 1 (รวม begindefuse) × ผู้เล่น: team_num, is_alive, health, armor_value, has_helmet, has_defuser, is_defusing, current_equip_value, active_weapon, X, Y, Z · คู่กับ `defuse_starts` (begin/abort + haskit) และ `header.json` (cvars) → สร้าง `wp_states` ใหม่ได้โดยไม่ต้องมี demo
+**`state_ticks`** (Phase 3.1, `snapshot/p1/state_ticks.parquet`, backend.md §6.2): แถวดิบของ `parse_ticks` ณ state ticks ∪ bomb_begindefuse ticks และ tick − 1 × ผู้เล่น: tick, steamid, name, team_num, current_equip_value, has_defuser, is_defusing, **balance** (เงินในมือ, ไว้ใช้กับ WP / economy รุ่นหน้า), is_alive, health, armor_value, has_helmet, active_weapon_name, X, Y, Z (`wp_states.STATE_TICK_PROPS`) · คู่กับ `defuse_starts` (tick, sid, kind begin/abort, haskit), `cvars` (server_cvar ทุกแถว) และ `header.json` → สร้าง `wp_states` ใหม่ได้โดยไม่ต้องมี demo
 
 **`replay`** (Phase 3.1b, ยังไม่ implement, backend.md §6.3): ตำแหน่ง/ทิศ/HP/อาวุธ 8 Hz ต่อผู้เล่น 1 ไฟล์ต่อรอบ + เส้นทางระเบิด (ข้อยกเว้นของหลัก §1.1)
 

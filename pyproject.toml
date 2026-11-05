@@ -23,7 +23,9 @@ visibility = ["awpy>=3.1.1"]
 train = ["scikit-learn>=1.3"]
 
 [tool.setuptools.packages.find]
-include = ["impactagent*"]
+# impactagent/ (library) at the root, iaserver (pipeline / api / worker) under server/.
+where = [".", "server"]
+include = ["impactagent*", "iaserver*"]
 
 [tool.setuptools.package-data]
 impactagent = ["metrics/*.yaml", "validate/*.yaml"]

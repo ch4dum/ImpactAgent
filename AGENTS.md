@@ -47,11 +47,15 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 | `data/validation/mirage-65db631a.json` | **Validation pair 2 (holdout):** `scripts/demos/003850878442929127864_1489073941.dem.bz2` (de_mirage 13:11, 24 rounds; utility for both teams, some nulls; players may carry `aliases`). Gitignored. |
 | `data/validation/dust2-85507dfb.json` | **Validation pair 3 (holdout):** `scripts/demos/003849547149096255807_0663000482.dem.bz2` (de_dust2 13:7, 20 rounds; non-ASCII names; ch4dum on SSG08). Gitignored. Holdout result (code before any change): core 353/360, opening 20/20, clutch 25/25 (spec §6) |
 | `data/validation/dust2-f2633f5c.json` | Leetify values for a de_dust2 13:9 match. **No local demo matches it** (`dust2win.dem`, `dust139.dem`, `dust1614.dem` are other matches). Don't tune anything to it. Gitignored. |
-| `data/parsed/` | Parser outputs (Parquet). Gitignored. |
+| `data/parsed/` | Parser outputs (Parquet). Gitignored. Event tables in the validation folders are from 2026-11-05 (before the visibility / aim / zones parser changes); only `rating_events` / `player_round_ratings` are current. |
+| `docs/design/backend.md` | **Phase 3 backend design**: Postgres schema + RLS, R2 layout + versions, jobs, API, auth / CORS, privacy, recompute without demo, steps 3.0–3.10 (§12). Code must follow it. |
+| `impactagent/parse/io.py` | `parsed_tables(p)`, `parquet_ready`, `write_tables` (shared by CLI `parse` and the pipeline) |
+| `server/iaserver/` | Server package (`pip install -e .` installs it). `pipeline/run.py` `run_match(demo) -> MatchBundle` (decompress once, parse, `read_state_snapshots`, wp_states, Impact, `match_tables`), `pipeline/bundle.py` `write_bundle` / `read_bundle`, `pipeline/versions.py` (`PARSE_VERSION`, `pipeline_version`). CLI: `python -m iaserver bundle DEMO` → `data/bundles/<stem>/` (gitignored) |
 
 ## Current status (2026-11-06)
 Phase 0 (research), data model v0.1, Phase 1 (metrics) and **Phase 2 (ratings) are done**; **current: Phase 3 (backend)**. Full plan and checklist: `docs/roadmap.md`.
 
+- **Phase 3:** 3.0 (plan, `docs/design/backend.md`) and **3.1 done** (2026-11-06): `python -m iaserver bundle DEMO` writes events / snapshot (`state_ticks` incl. `balance`, `defuse_starts`, `cvars`, header) / derived + manifest; equal to a golden from the pre-refactor code on 5 matches, 13–23 s and ≤ 0.73 GB peak RSS per match, 0.31–0.43 MB per bundle. Next: 3.1b (replay 8 Hz) → 3.2 (recompute without demo) → 3.1c (metric num/den) → 3.3.
 - **CLI:** `inspect`, `parse`, `validate`, `validate-all`, `validate-faceit`, `visibility`, `wp-states`, `train-wp`, `impact`. `parse_demo` reads `.dem` / `.dem.bz2` / `.dem.gz` (`.dem.zst` with zstandard), caps the decompressed demo at 1 GiB and parses in a child process killed after 300 s (`MAX_DEMO_BYTES`, `PARSE_TIMEOUT_SECONDS` in `constants.py`).
 - **Metrics vs Leetify:** core (General + Utility + trade succeeded + opening traded % + shots fired / accuracy / head accuracy) **inferno 305/305, mirage 350/350** (player × metric); opening duels 37/37 rounds; clutches 43/43 (incl. disconnect deaths). Trade opportunity / attempt and 7 Aim metrics (spotted accuracy, spray, counter-strafe, first bullet, TTD, TTK, crosshair) are `calibrating`, not gating. Rule-by-rule evidence (2 matches / 1 match / hypothesis): `docs/metrics/leetify-metrics-spec.md` §8.
 - **Dust2 holdout (pair 3):** core 356/356 + 4 known exceptions (unused utility ×3, blind duration yyh; cause unknown, `impactagent/validate/known_exceptions.yaml`, spec §8). Inferno 305/305, Mirage 350/350; `validate-all` passes.
@@ -72,7 +76,8 @@ python -m impactagent validate-all
 ```
 
 ### Next steps (Phase 3 in `docs/roadmap.md`)
-1. Backend: Supabase (Postgres core tables + Steam auth), Parquet event storage, upload → queue → worker (parse + metrics + impact), FastAPI.
+1. Backend steps 3.1b → 3.2 → 3.1c → 3.3 … 3.10 (`docs/design/backend.md` §12): replay 8 Hz, recompute without demo, metric num/den, Supabase schema, R2, worker, upload API, Steam auth, endpoints, docker-compose + Cloudflare Tunnel, recompute job.
+2. After any change in `impactagent/` or `server/iaserver/pipeline`: `validate-all` + rebuild a bundle and compare (the pipeline must call impactagent's public functions only, no metric logic in `server/`).
 
 ### Open items from Phase 1 (not blocking)
 1. Trade opportunity / attempt: visibility-based definitions did not generalize (raycast 23/40 inferno, 11/40 mirage holdout vs current 22/40, 25/40); kept the current one. Needs per-death truth (spec §3).

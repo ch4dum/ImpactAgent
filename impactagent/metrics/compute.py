@@ -362,7 +362,12 @@ def clutch_metrics(p: ParsedDemo, clutches: pd.DataFrame) -> pd.DataFrame:
 
 # --------------------------------------------------------------------------- all
 
-def compute_match_metrics(p: ParsedDemo) -> pd.DataFrame:
+def match_tables(p: ParsedDemo, events: pd.DataFrame | None = None) -> dict[str, pd.DataFrame]:
+    """-> {"metrics": per-player metrics, "player_rounds", "clutches"} for one match.
+
+    `events`: rating_events already built for this match (credit.build_rating_events);
+    None = build them here (reads the demo again for wp_states).
+    """
     all_kills = p.kills
     if "post_match" in all_kills:  # post-match deaths only feed the unused-utility denominator
         p = replace(p, kills=all_kills[~all_kills["post_match"]].reset_index(drop=True))
@@ -370,12 +375,19 @@ def compute_match_metrics(p: ParsedDemo) -> pd.DataFrame:
     gen = general_metrics(p, pr)
     util = utility_metrics(p, all_kills)
     trades = trade_metrics(p)
-    clutch = clutch_metrics(p, build_clutches(replace(p, kills=all_kills)))
+    clutches = build_clutches(replace(p, kills=all_kills))
+    clutch = clutch_metrics(p, clutches)
     aim = aim_metrics(p)
     rws = rws_metrics(p)
     from impactagent.ratings.credit import impact_metrics  # lazy: credit imports this module
 
     # Impact gets the post_match-filtered p plus all kills for its clutch categories.
-    impact = impact_metrics(replace(p, kills=all_kills))
+    impact = impact_metrics(replace(p, kills=all_kills), events)
     names = p.players.set_index("steam_id")[["name", "team"]]
-    return names.join(gen).join(util).join(trades).join(clutch).join(aim).join(rws).join(impact)
+    metrics = names.join(gen).join(util).join(trades).join(clutch).join(aim).join(rws).join(impact)
+    return {"metrics": metrics, "player_rounds": pr, "clutches": clutches}
+
+
+def compute_match_metrics(p: ParsedDemo, events: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Per-player metrics of one match (see match_tables)."""
+    return match_tables(p, events)["metrics"]

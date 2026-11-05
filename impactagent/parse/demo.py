@@ -159,6 +159,10 @@ def _demo_file(path: Path, max_bytes: int | None = MAX_DEMO_BYTES):
             tmp.unlink(missing_ok=True)
 
 
+# Public name: callers outside parse/ (server/iaserver) decompress once and reuse the plain .dem.
+demo_file = _demo_file
+
+
 def _event(parser: DemoParser, name: str, player: list[str] | None = None) -> pd.DataFrame:
     try:
         df = parser.parse_event(name, player=player or [])

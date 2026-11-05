@@ -149,7 +149,8 @@ matches/{match_id}/
   events/p{N}/{table}.parquet           ชั้น parse (สร้างใหม่ได้เฉพาะเมื่อมี demo)
   snapshot/p{N}/state_ticks.parquet     §6
                 defuse_starts.parquet
-                header.json             cvars (mp_roundtime, mp_c4timer, …), tickrate, client_build, map
+                cvars.parquet           server_cvar ทั้งหมด (FACEIT มี ~2.6k แถว: เป็น JSON = 220 KB)
+                header.json             header ของ demo, tickrate, client_build, map
   derived/{pipeline_version}/           wp_states, rating_events, player_round_ratings, player_rounds,
                                         clutches, player_zones, metric_values.parquet
   replay/r{N}/meta.json                 player index ↔ steam_id, tick ของแต่ละรอบ, scale ของ quantize
@@ -246,29 +247,30 @@ cancel ได้ตอน awaiting_upload / queued (ทุก request ของ 
 | state ชนิดใหม่ (เช่น `begin_defuse`) | `state_ticks` ต้องมี tick นั้น → เก็บ tick ของ begindefuse ไว้ล่วงหน้า | ไม่ |
 | visibility / aim / trade feature, prop ที่ไม่ได้เก็บ | tick data | **ต้องมี** → ใช้ได้กับแมตช์ใหม่เท่านั้น (replay 8 Hz ช่วยได้บางส่วน) |
 
-### 6.2 `state_ticks` / `defuse_starts` / `header.json` (ใหม่)
-ตอนนี้ `build_wp_states` เปิด `.dem` อีกรอบเพื่ออ่าน `server_cvar`, `bomb_begindefuse` (`haskit`) และ tick ณ state (`team_num`, `current_equip_value`, `has_defuser`, `is_defusing`) ถ้าไม่เก็บไว้ ลบ demo แล้วจะสร้าง wp_states ใหม่ไม่ได้
-- `state_ticks`: ticks = ทุก state tick และ tick − 1 (freeze_end, kill, plant, **begindefuse**, defuse, explode, round_end) × ผู้เล่นทุกคน: `tick, steam_id, team_num, is_alive, health, armor_value, has_helmet, has_defuser, is_defusing, current_equip_value, active_weapon, X, Y, Z`
+### 6.2 `state_ticks` / `defuse_starts` / `cvars` / `header.json` (ทำแล้วใน 3.1)
+`build_wp_states` ต้องใช้ `server_cvar`, `bomb_begindefuse` (`haskit`) และ tick ณ state (`team_num`, `current_equip_value`, `has_defuser`, `is_defusing`) ถ้าไม่เก็บไว้ ลบ demo แล้วจะสร้าง wp_states ใหม่ไม่ได้ · `impactagent/ratings/wp_states.py`: `read_state_snapshots(dem, state_ticks) -> StateSnapshot`, `build_wp_states(p, snapshot=None)` (None = เปิด demo จาก `p.path` เหมือนเดิม)
+- `state_ticks`: แถวดิบของ `parse_ticks(STATE_TICK_PROPS)` (ไม่กรอง) ที่ ticks = state ticks ∪ bomb_begindefuse ticks และ tick − 1 ของทั้งสองชุด · props: `team_num, current_equip_value, has_defuser, is_defusing, balance, is_alive, health, armor_value, has_helmet, active_weapon_name, X, Y, Z` + `tick, steamid, name` · การเพิ่ม props / ticks ไม่ทำให้แถวที่ `parse_ticks` คืนเปลี่ยน (ตรวจ 5 แมตช์) จึงใช้ call เดียว
 - `defuse_starts`: begin/abort ของ `bomb_begindefuse` พร้อม `haskit`
-- `header.json`: cvars ทั้งหมดจาก `server_cvar`, tickrate, client_build, map
-- refactor: `read_state_snapshots(dem, ticks)` แยกจาก `_read_timers_and_equip` และ `build_wp_states` รับ snapshot แทน path ได้ (ผลต้อง `equals` ของเดิมทุกแมตช์)
+- `cvars.parquet`: `server_cvar` ทุกแถว (name, value, tick)
+- `header.json`: `parse_header()`, tickrate, client_build, map
+- ตรวจแล้ว: eq / timers / defuse_starts / wp_states / stats จาก snapshot = ของเดิม ทั้ง 5 แมตช์ (3.1); สร้างใหม่จาก bundle ที่อ่านกลับ = ช่วง 3.2
 
 ### 6.3 Replay 8 Hz (ช่วง 3.1b)
 - ทุก 8 tick (64-tick) ระหว่าง freeze_end − 5 s ถึง round_end + 5 s · ต่อผู้เล่น: x, y, z (quantize int16 ตาม scale ใน `meta.json`), yaw (int16), pitch (int8), hp, armor, active_weapon (id), alive, flags (ducking, scoped, defusing, blind) · + เส้นทางระเบิด (entity, tick, xyz) · 1 ไฟล์ต่อรอบ, zstd
 - เก็บใน child process เดียวกับ parse (ไม่เปิด demo เพิ่ม) แยกจาก event tables เพื่อให้ปิดได้ด้วย flag ถ้าช้า
 
-### 6.4 ขนาดต่อแมตช์
-วัดจาก `data/parsed` (mirage 24 รอบ) แถวที่เขียนว่าประเมินยังไม่ได้วัด (วัดจริงในช่วง 3.1 / 3.1b)
+### 6.4 ขนาดและเวลาต่อแมตช์ (วัดจริง 3.1, 2026-11-06)
+bundle 5 แมตช์ (13–24 รอบ, demo บีบอัด 75–173 MB) บน laptop Windows; replay / Postgres ยังเป็นค่าประเมิน
 | ชั้น | ขนาด |
 |---|---|
-| event tables (14 ไฟล์, ยังไม่รวม engagements/smokes) | ~190 KB (วัด) |
-| rating_events + player_round_ratings | ~28 + 6 KB (วัด) |
-| wp_states | ~3.5 KB (วัด: 103 KB / 30 แมตช์, ~210 state/แมตช์) |
-| state_ticks + defuse_starts + header | ~50–120 KB (ประเมิน: ~450 tick × 10 คน) |
-| derived อื่น (player_rounds, clutches, metric_values long) | ~30–60 KB (ประเมิน) |
-| **รวม ไม่มี replay** | **~0.3–0.4 MB** (demo 80–330 MB) |
-| replay 8 Hz | ~1–3 MB (ประเมิน) |
+| events/p1 (15 ตาราง) | 156–229 KB |
+| snapshot/p1 (state_ticks 2.0k–4.4k แถว + defuse_starts + cvars + header) | 43–72 KB |
+| derived (wp_states, rating_events, player_round_ratings, player_rounds, clutches, metrics, metric_values) | 110–126 KB |
+| **รวม ไม่มี replay** | **0.31–0.43 MB** |
+| replay 8 Hz | ~1–3 MB (ประเมิน, วัดใน 3.1b) |
 | Postgres | ~80 KB (ประเมิน, metrics jsonb) |
+
+เวลา `python -m iaserver bundle` ทั้งกระบวนการ 13–23 s/แมตช์ (decompress bz2 3.5–6.7 s, zst < 0.5 s; parse 7.6–13.2 s; snapshot 0.8–1.1 s; wp + credit + metrics < 1 s) · peak RSS ทั้ง process tree 0.46–0.73 GB (parent 0.26–0.42 GB, parse child 0.37–0.65 GB) → worker ตั้ง limit ≥ 1.5 GB ได้
 
 R2 free 10 GB ≈ 4k แมตช์ (มี replay); ส่วนเกิน $0.015/GB-เดือน · Supabase free 500 MB ≈ 6k แมตช์
 
@@ -331,11 +333,12 @@ R2 free 10 GB ≈ 4k แมตช์ (มี replay); ส่วนเกิน $
 
 ```
 impactagent/              เดิม: parse / metrics / ratings / validate (ไม่แตะ logic)
-server/                   package `iaserver` (pyproject เดิม, extras [api] [worker])
-  pipeline/  run.py       run_match(dem_path) -> MatchBundle (pure, ไม่ยุ่ง cloud)
-             bundle.py    เขียน/อ่าน bundle (Parquet + manifest), recompute(bundle) -> derived
+server/iaserver/          package `iaserver` (pyproject เดิม: packages.find where = [".", "server"]; extras [api] [worker] ทีหลัง)
+  __main__.py             python -m iaserver bundle DEMO [--out DIR]  (default data/bundles/<stem>, gitignored)
+  pipeline/  run.py       run_match(dem_path) -> MatchBundle (pure, ไม่ยุ่ง cloud), InvariantError
+             bundle.py    write_bundle / read_bundle (Parquet + manifest); recompute(bundle) -> derived (3.2)
              versions.py  PARSE_VERSION + hash ของ registry / credit / wp_model → pipeline_version
-             rows.py      bundle → แถว PG (match_players.metrics jsonb ฯลฯ)
+             rows.py      (3.3) bundle → แถว PG (match_players.metrics jsonb ฯลฯ)
              replay.py    (3.1b) track 8 Hz
   core/                   settings (pydantic-settings), db (psycopg pool), r2 (boto3), schemas
   api/                    main.py, routes/{auth,uploads,matches,players,privacy,meta,admin}.py, steam.py, session.py
@@ -347,12 +350,15 @@ tests/server/             pipeline (bundle เทียบ data/parsed), api (Te
 .env.example              (.env อยู่ใน .gitignore)
 ```
 
-`run_match` เรียก public function ของ `impactagent` ตามลำดับ: `parse_demo(path)` → `read_state_snapshots` / `build_wp_states(p)` (ครั้งเดียว) → `build_rating_events(p, states)` → `check_invariants` → `player_round_ratings` → `build_player_rounds` → `build_clutches` → `compute_match_metrics(p, events)`
+`run_match` แตกไฟล์ครั้งเดียว (`demo_file`) แล้วเรียก public function ของ `impactagent` ตามลำดับ: `parse_demo(plain)` → `read_state_snapshots(plain, state_ticks_of(p))` → `build_wp_states(p, snapshot)` → `build_rating_events(p, states)` → `check_invariants` (พัง = `InvariantError`) → `player_round_ratings` → `match_tables(p, events)` (metrics + player_rounds + clutches) · `p.sha256` = hash ของ .dem หลังแตก = `dem_sha256`
 
-Refactor ใน `impactagent/` ที่ต้องทำ (ไม่เปลี่ยน logic; `validate-all` + bundle `DataFrame.equals` ของเดิมต้องผ่าน):
-1. ย้ายการแปลง dtype + `detonations` attrs จาก `_cmd_parse` ไปเป็น `write_tables()` ให้ CLI กับ pipeline ใช้ร่วมกัน
-2. `compute_match_metrics(p, events=None)`: รับ rating_events ที่คำนวณแล้ว (ตอนนี้ `impact_metrics` สร้าง wp_states ใหม่ = เปิด demo ซ้ำ)
-3. `read_state_snapshots(dem, ticks)` แยกจาก `_read_timers_and_equip`; `build_wp_states` รับ snapshot แทน path ได้ (§6.2)
+Refactor ใน `impactagent/` (ทำแล้วใน 3.1, ไม่เปลี่ยน logic: เทียบ golden จาก HEAD ก่อนแก้ทั้ง 5 แมตช์ด้วย `DataFrame.equals` + `assert_frame_equal(check_exact, check_dtype)` และ `validate-all` log เหมือนเดิมทุกบรรทัด):
+1. `impactagent/parse/io.py`: `parsed_tables(p)` (+ `detonations`), `parquet_ready(df)`, `write_tables(tables, dir)`; CLI `parse` ใช้ตัวเดียวกัน
+2. `impactagent/metrics/compute.py`: `match_tables(p, events=None)` → {metrics, player_rounds, clutches}; `compute_match_metrics(p, events=None)` = `match_tables(...)["metrics"]` (ส่ง events แล้วไม่ต้องเปิด demo ซ้ำ)
+3. `impactagent/ratings/wp_states.py`: `StateSnapshot`, `read_state_snapshots`, `state_ticks_of`, `_timers_from_cvars`, `_equip_from_snapshot`; `build_wp_states(p, snapshot=None)`; `_read_timers_and_equip` เหลือเป็น wrapper (§6.2)
+4. `impactagent/parse/demo.py`: ชื่อ public `demo_file` (= `_demo_file`)
+
+Parquet ไม่มี dtype `object`: คอลัมน์ string ที่อยู่ในหน่วยความจำเป็น `object` (เช่น `player_round_ratings.steam_id`) อ่านกลับมาเป็น `str` (ค่าเท่ากัน, เหมือนไฟล์ที่ CLI `impact` เขียนอยู่แล้ว)
 
 ---
 
@@ -376,9 +382,10 @@ Refactor ใน `impactagent/` ที่ต้องทำ (ไม่เปล�
 | ช่วง | งาน | ผ่านเมื่อ |
 |---|---|---|
 | 3.0 | doc นี้ + data-model §2.5 / §7 + roadmap | owner approve |
-| 3.1 | `pipeline.run_match` + bundle ลงโฟลเดอร์ local + refactor 3 ข้อ (§10) + `state_ticks` | 5 แมตช์ bundle `equals` ไฟล์เดิมใน `data/parsed` · `validate-all` เขียว · วัดเวลา + peak RAM + ขนาดจริง |
+| 3.1 ✅ | `pipeline.run_match` + bundle ลงโฟลเดอร์ local + refactor (§10) + `state_ticks` | **ผ่าน (2026-11-06):** golden จาก HEAD ก่อนแก้ (event Parquet ใน `data/parsed` เป็นของเก่าก่อน parser เปลี่ยน ใช้เทียบได้แค่ rating_events / player_round_ratings) · R1 15/15, R2 25/25, R3 35/35, bundle 65/65 · rating_events / player_round_ratings = `data/parsed` · `validate-all` log เหมือนเดิม · เวลา / RAM / ขนาด §6.4 |
 | 3.1b | replay 8 Hz ใน bundle | ขนาด/เวลาเพิ่มวัดได้ · ตำแหน่ง ณ kill tick ใกล้ `kills.attacker_xyz` (± 1 frame) |
 | 3.2 | `recompute(bundle)` ไม่มี demo | ซ่อน demo แล้ว recompute → rating_events / metrics `equals` รอบที่มี demo ทุกแมตช์ |
+| 3.1c | metric function คืน numerator / denominator (ทำหลัง 3.2 ก่อน 3.3; ตอนนี้ `metric_values.parquet` มี num/den = null) | golden + `validate-all` ไม่เปลี่ยน · metric `ratio` ทุกตัวใน registry มี num/den และ value = num/den |
 | 3.3 | migrations + loader (bundle → PG local) | scoreboard จาก SQL ตรงกับ `compute_match_metrics` / CLI `impact` |
 | 3.4 | R2: เขียน/อ่าน bundle + manifest + lifecycle `incoming/` `failed/` | DuckDB อ่าน rating_events จาก R2 ได้ · sha ใน manifest ตรง |
 | 3.5 | Worker loop (PG local + R2 dev) + `job_errors` | job เองจนจบ done · kill กลางทาง → reaper requeue · ไฟล์เสีย → failed `input` · invariant พัง (จำลอง) → failed `ours` + demo อยู่ใน `failed/` · ไฟล์ซ้ำ → duplicate |
@@ -392,4 +399,5 @@ Refactor ใน `impactagent/` ที่ต้องทำ (ไม่เปล�
 - ย้ายไป VPS: เกณฑ์ (จำนวน job/วัน, เวลารอคิว) ยังไม่กำหนด
 - `played_at` สำหรับ demo MM (ไม่มีวันที่ใน header): ใช้เวลาอัปไปก่อน
 - Scope `CT` / `T` ใน `metrics` jsonb รอ `compute_match_metrics` คิดแยกฝั่ง
+- numerator / denominator ของ metric: ช่วง 3.1c (`compute_match_metrics` ตอนนี้คืนแค่ค่า)
 - ลบ prefix `derived/` ของ version เก่าเมื่อไหร่ (ตอนนี้ด้วยมือ)

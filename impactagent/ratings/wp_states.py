@@ -15,6 +15,7 @@ before the event (from bomb_begindefuse; no extra states are added).
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
@@ -28,6 +29,14 @@ STATE_COLUMNS = [
     "match_id", "map", "round_no", "tick", "event_type", "event_ref",
     "t_alive", "ct_alive", "bomb_planted", "time_left_s", "equip_diff_k", "ct_has_kit",
     "ct_defusing", "ct_defusing_pre", "t_won", "trainable",
+]
+
+# Player props sampled at the state ticks. build_wp_states uses team_num,
+# current_equip_value, has_defuser, is_defusing; the rest are stored in the snapshot for
+# future WP / economy features (backend.md §6.2) since the demo is deleted after parsing.
+STATE_TICK_PROPS = [
+    "team_num", "current_equip_value", "has_defuser", "is_defusing", "balance", "is_alive",
+    "health", "armor_value", "has_helmet", "active_weapon_name", "X", "Y", "Z",
 ]
 
 # Ticks a defuse may run past its nominal duration before we treat it as let go.
@@ -194,13 +203,46 @@ def _defuse_intervals(p, defs: pd.DataFrame, c4: float) -> dict[int, list[tuple[
     return out
 
 
-def _read_timers_and_equip(dem_path: Path, state_ticks: list[int]):
-    """Open the demo a second time: read server_cvar (mp_roundtime/mp_c4timer) and sample
-    equipment value only at the state ticks. -> (round_time_s, c4_timer_s, equip_df, warns)."""
-    parser = DemoParser(str(dem_path))
-    warns: list[str] = []
+@dataclass
+class StateSnapshot:
+    """Everything build_wp_states reads from the demo, so it can run again without it
+    (docs/design/backend.md §6.2). Only state ticks (and tick - 1, and begin-defuse ticks)
+    are sampled; no per-tick data of the whole game."""
+    state_ticks: pd.DataFrame      # raw parse_ticks rows (STATE_TICK_PROPS + tick, steamid, name)
+    defuse_starts: pd.DataFrame    # tick, sid, kind ("begin" | "abort"), haskit
+    cvars: pd.DataFrame            # server_cvar events as parsed
+    header: dict = field(default_factory=dict)
 
-    cv = pd.DataFrame(parser.parse_event("server_cvar"))
+
+def state_ticks_of(p) -> list[int]:
+    """Sorted ticks of the wp states of a parsed demo."""
+    return sorted({s["tick"] for s in _iter_states(p, p.tickrate)})
+
+
+def _sample_ticks(state_ticks, defs: pd.DataFrame) -> list[int]:
+    """State ticks, tick - 1 (`is_defusing` right before an event) and bomb_begindefuse
+    ticks (+ tick - 1), kept for a future begin_defuse state."""
+    begin = set(defs.loc[defs["kind"] == "begin", "tick"].astype(int)) if len(defs) else set()
+    base = set(state_ticks) | begin
+    return sorted(base | {t - 1 for t in base})
+
+
+def read_state_snapshots(dem_path: Path, state_ticks) -> StateSnapshot:
+    """Read server_cvar, defuse starts and STATE_TICK_PROPS at the sample ticks (one parser)."""
+    parser = DemoParser(str(dem_path))
+    header = parser.parse_header() or {}
+    cvars = pd.DataFrame(parser.parse_event("server_cvar"))
+    defs = _read_defuse_starts(parser)
+    ticks = _sample_ticks(state_ticks, defs)
+    snap = pd.DataFrame(parser.parse_ticks(STATE_TICK_PROPS, ticks=ticks))
+    if snap.empty:
+        snap = pd.DataFrame(columns=STATE_TICK_PROPS + ["tick", "steamid", "name"])
+    return StateSnapshot(state_ticks=snap, defuse_starts=defs, cvars=cvars, header=dict(header))
+
+
+def _timers_from_cvars(cv: pd.DataFrame) -> tuple[float, float, list[str]]:
+    """mp_roundtime (minutes -> s) / mp_c4timer from server_cvar, else the constants."""
+    warns: list[str] = []
     rt = c4 = None
     if not cv.empty:
         rt_rows = cv[cv["name"] == "mp_roundtime"]["value"]
@@ -217,34 +259,44 @@ def _read_timers_and_equip(dem_path: Path, state_ticks: list[int]):
         c4 = C4_TIMER_S
     elif abs(c4 - C4_TIMER_S) > TIMER_WARN_SECONDS:
         warns.append(f"mp_c4timer={c4:.1f}s differs from constant {C4_TIMER_S}s")
+    return rt, c4, warns
 
-    # tick - 1 too: `is_defusing` right before an event (the pre-event defuse flag).
-    ticks = sorted(set(state_ticks) | {t - 1 for t in state_ticks})
-    eq = pd.DataFrame(parser.parse_ticks(
-        ["team_num", "current_equip_value", "has_defuser", "is_defusing"], ticks=ticks))
-    if eq.empty:
-        eq = pd.DataFrame(columns=["tick", "steamid", "team_num", "current_equip_value",
-                                   "has_defuser", "is_defusing"])
+
+def _equip_from_snapshot(snap: pd.DataFrame) -> pd.DataFrame:
+    """Players on T/CT at the sampled ticks + side, value (equip), kit, defusing."""
+    eq = snap.copy()
     eq["sid"] = _sid(eq["steamid"])
     eq = eq[eq["sid"].notna() & eq["team_num"].isin([2, 3])].copy()
     eq["side"] = eq["team_num"].map(SIDE_BY_TEAM_NUM)
     eq["value"] = eq.get("current_equip_value", 0).fillna(0).astype(float)
     eq["kit"] = eq.get("has_defuser", False).fillna(False).astype(bool)
     eq["defusing"] = eq.get("is_defusing", False).fillna(False).astype(bool)
-    return rt, c4, eq, _read_defuse_starts(parser), warns
+    return eq
 
 
-def build_wp_states(p) -> tuple[pd.DataFrame, dict]:
+def _read_timers_and_equip(dem_path: Path, state_ticks: list[int]):
+    """Open the demo: timers from server_cvar and equipment / kit / defusing at the state
+    ticks (and tick - 1). -> (round_time_s, c4_timer_s, equip_df, defuse_starts, warns)."""
+    snap = read_state_snapshots(dem_path, state_ticks)
+    rt, c4, warns = _timers_from_cvars(snap.cvars)
+    return rt, c4, _equip_from_snapshot(snap.state_ticks), snap.defuse_starts, warns
+
+
+def build_wp_states(p, snapshot: StateSnapshot | None = None) -> tuple[pd.DataFrame, dict]:
     """Build wp_states for one parsed demo. Returns (DataFrame, stats dict).
 
     `p` is a ParsedDemo (parse_demo(..., fast=True) is enough — trade/aim tables are unused).
+    `snapshot`: from read_state_snapshots (same demo); None = open the demo at `p.path`.
     """
     states = list(_iter_states(p, p.tickrate))
     state_ticks = sorted({s["tick"] for s in states})
 
-    dem_path = p.path
-    with _demo_file(dem_path) as (plain, _sha):
-        rt, c4, eq, defs, timer_warns = _read_timers_and_equip(plain, state_ticks)
+    if snapshot is None:
+        with _demo_file(p.path) as (plain, _sha):
+            snapshot = read_state_snapshots(plain, state_ticks)
+    rt, c4, timer_warns = _timers_from_cvars(snapshot.cvars)
+    eq = _equip_from_snapshot(snapshot.state_ticks)
+    defs = snapshot.defuse_starts
     eq_by_tick_sid = eq.set_index(["tick", "sid"])["value"].to_dict()
     kit_by_tick_sid = eq.set_index(["tick", "sid"])["kit"].to_dict()
     dfs_by_tick_sid = eq.set_index(["tick", "sid"])["defusing"].to_dict()

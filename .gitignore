@@ -20,6 +20,7 @@ dist/
 *.parquet
 data/raw/
 data/parsed/
+data/bundles/
 data/train_demos/
 
 # OS / editor

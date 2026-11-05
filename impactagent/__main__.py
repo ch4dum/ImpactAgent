@@ -52,22 +52,12 @@ def _inspect(dem_path: Path, event_names: list[str]) -> int:
 
 def _cmd_parse(args: argparse.Namespace) -> int:
     from impactagent.parse.demo import parse_demo
+    from impactagent.parse.io import parsed_tables, write_tables
 
     p = parse_demo(args.demo)
     out = Path(args.out or f"data/parsed/{_demo_stem(Path(args.demo))}")
-    out.mkdir(parents=True, exist_ok=True)
-    tables = p.tables()
-    det = p.grenades.attrs.get("detonations")
-    if det is not None and not det.empty:
-        tables["detonations"] = det
-    for name, df in tables.items():
-        df = df.copy()
-        df.attrs = {}
-        for c in df.columns:  # lists (inventory) -> parquet list; mixed objects -> string
-            if df[c].dtype == object and not df[c].map(lambda v: isinstance(v, (list, type(None)))).all():
-                df[c] = df[c].astype("string")
-        df.to_parquet(out / f"{name}.parquet", index=False)
-        print(f"{name:<20} {len(df):>6} rows")
+    for name, n in write_tables(parsed_tables(p), out).items():
+        print(f"{name:<20} {n:>6} rows")
     print(f"map={p.map_name} rounds={len(p.rounds)} sha256={p.sha256[:12]} -> {out}")
     for w in p.warnings:
         print("WARN:", w)
