@@ -57,6 +57,7 @@ Leetify **ไม่ใช้** radar spotted ของเกม (ช้าได
 
 - **TTD / TTK / crosshair ของเราต่ำกว่า Leetify ทุกคน** (TTD สั้นกว่า 16–390ms, crosshair เล็กกว่า ~2 เท่า) ทุก config ที่ลอง (gap 0–64 tick, FOV / ไม่มี FOV, ควัน / ไม่มีควัน, ตัด TTD สั้น, mean แทน median) จึงน่าจะมาจาก **first seen ของเราช้ากว่า** ไม่ใช่สูตร. สงสัย: mesh ของ awpy (physics) มี player clip / prop ที่ไม่บังสายตาจริง หรือ Leetify ใช้ hitbox ที่ใหญ่กว่า 3 จุดของเรา (ลองเพิ่มจุด ±8–16u แล้วไม่ดีขึ้นใน spotted accuracy)
 - **Spray accuracy ของ Leetify ไม่น่าใช่ hit ÷ นัด**: inferno yyh 0.83 ทั้งที่ accuracy รวม 0.11 และ spotted 0.51 ลองแบบ "spray ที่โดน ≥ k ครั้ง" แล้วก็ไม่ตรง อาจวัด recoil control จากมุม (ต้องใช้ aim punch)
+- **ทดลอง first_seen (ไม่ได้เปลี่ยนค่าหลัก):** TTD bias (ms) Inferno / Mirage: raycast 3 จุด (ใช้อยู่) −173 / −143 · `spotted` −338 / −337 · union raycast ∪ spotted −163 / −141 · **raycast 8 จุด** (หัว คอ อก เอว เข่า เท้า + ไหล่ซ้ายขวา ±14u) **−125 / −83** · union 8 จุด ∪ spotted −114 / −78. Crosshair bias −5.7 / −4.6 → −4.9 / −4.3 (แทบไม่เปลี่ยน) → TTD ห่างเพราะ hitbox ของเราเล็กไป (เพิ่มจุดแล้วเห็นเร็วขึ้น), ส่วน crosshair น่าจะเป็นที่นิยาม (ไม่ใช่ first_seen อย่างเดียว). `spotted` ของเกมช้ากว่า raycast มาก
 - Null: spray null เมื่อไม่มี spray ที่เข้าเกณฑ์; Leetify ให้ null ใน 3 กรณีที่เราได้ค่า (spray 2–4 นัด) → เกณฑ์ spray ของ Leetify เข้มกว่า
 
 ### 1.1 Accuracy (Enemy Spotted) ✅
@@ -139,6 +140,16 @@ Leetify **ไม่ใช้** radar spotted ของเกม (ช้าได
   | **att = damage ใส่คนฆ่า หรือ ยิงตอนเห็นคนฆ่าและเป้าห่าง < 20°** (ใช้อยู่, 4s) | | | **12** | **13** |
 
   ตอนนี้ได้ inferno 22/40, mirage 25/40 (metric × ผู้เล่น) ห่างเฉลี่ย 4–48%. **สาเหตุที่น่าจะเป็น:** `approximate_spotted_by` ของเกมเป็นค่าประมาณ Leetify น่าจะใช้ visibility ของตัวเอง → รอ visibility module (roadmap Phase 1) แล้ว calibrate ใหม่. validate รายงานกลุ่มนี้เป็น `calibrating` ไม่ gate
+- **ลองใหม่ด้วย visibility module (2026-11-05, ไม่ได้เปลี่ยนโค้ด):** sample ทุก 2 tick ใน window 2–5s, เพื่อนเห็นคนฆ่า (raycast / raycast ไม่มี FOV / `spotted` / union), คนฆ่าเห็นเพื่อน, มุมเป้า, ระยะ (ถึงคนฆ่า / คนตาย 300–2000u), attempt = ยิงหรือทำ damage **ขณะเห็นคนฆ่า**. Dev บน Inferno แล้วล็อก candidate ไว้ก่อน holdout:
+
+  | candidate (window 4s) | inferno (dev) | mirage (holdout) |
+  |---|---|---|
+  | raycast: att = ยิง/damage ขณะเห็น, opp = เห็น \| att | 23/40 | **11/40** |
+  | `spotted` ทุก 2 tick: opp = เห็น \| คนฆ่าเห็น \| att | 26/40 | **2/40** |
+  | union raycast ∪ spotted | 23/40 | 11/40 |
+  | **นิยามเดิม** (`approximate_spotted_by` ทุก 4 tick, att = damage \| ยิงขณะเห็น < 20°) | 22/40 | **25/40** |
+
+  ดีสุดบน Inferno เมื่อดูทีละ metric: TK opp 7/10, TD opp 6/10, TK att 9/10, TD att 7/10 แต่ไม่ generalize. Mirage: candidate นับ attempt **ขาด** (raycast −10 / −10, spotted −29 / −26 จาก truth 64 / 57) ส่วน opportunity เกิน (+16 / +7). Leetify ให้ attempt ÷ opportunity = 0.59 บน Inferno แต่ 0.90 บน Mirage จึงน่าจะนับ attempt กว้างกว่า "ยิงขณะเห็น" (เช่น ยิงอะไรก็ได้ หรือมี reposition / utility) และ opportunity ไม่ใช่แค่ "เห็นคนฆ่า". เคสที่ใช้แยก: inferno Wagga r8 ทำ damage ใส่คนฆ่าที่ 2.0s ก่อนเห็น (3.97s) แต่ Leetify ให้ TK attempt = 0. **คงนิยามเดิม + `calibrating`**; ต้องมี truth ราย death (ไม่ใช่แค่ยอดต่อ player) จึงจะแยกได้
 - **Opening traded %** = opening death ที่ถูก trade (succeeded) ÷ opening death ✅ (20/20)
 
 ---
@@ -220,7 +231,7 @@ kills, deaths, assists, HS kills, K/D, damage, ADR (`dpr`), KAST, rounds survive
 | Unused: ราคา (incendiary 500, decoy 50) | incendiary 22 การตาย, decoy 3 การตาย | ✅ |
 | Grace 1s ของ "เพิ่งปา" | เคสเดียว ห่าง 0.48s | 🟡 ค่าเป๊ะ |
 | Trade succeeded = เพื่อนฆ่าคนฆ่าใน window (TK ต่อเพื่อน, TD ต่อ death) | 40/40 player × metric | ✅ |
-| Trade opportunity / attempt (§3) | ดีสุด ~60% ตรงเป๊ะ | 🟡 รอ visibility |
+| Trade opportunity / attempt (§3) | นิยามเดิม 22/40, 25/40; นิยามใหม่ที่ใช้ raycast ได้ 23/40 บน Inferno แต่ holdout Mirage แค่ 11/40 | 🟡 คงนิยามเดิม (visibility อย่างเดียวไม่พอ) |
 | Opening traded % = opening death ที่ถูก trade ÷ opening death | 20/20 | ✅ |
 | Opening duel = kill แรกของรอบ (ไม่นับ TK / suicide) | 37/37 รอบ | ✅ |
 | Clutch เริ่มเมื่อ death ทำให้เหลือคนเดียวในฝั่ง และศัตรูเหลือ ≥ 1; vs = ศัตรูที่เหลือ; นับทุก death (TK / suicide / world / ออกเกม) ยกเว้น post-match | 43/43 | ✅ |

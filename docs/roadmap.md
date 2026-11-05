@@ -16,14 +16,14 @@
 
 ## ⏳ Phase 1: Metrics engine (ครบหนึ่งแมตช์)
 - [x] Trades: `trade_windows`, succeeded, opening traded %, clutches
-- [ ] Trade opportunities / attempts: ตอนนี้เป็นสมมติฐาน (ตรง ~60%) → calibrate ใหม่หลังมี visibility
+- [ ] Trade opportunities / attempts: ลองใหม่ด้วย visibility แล้ว (2026-11-05) raycast ได้ 23/40 บน Inferno แต่ holdout Mirage แค่ 11/40 (นิยามเดิม 22/40, 25/40) → **คงนิยามเดิม, calibrating**; ต้องมี truth ราย death (spec §3)
 - [x] Metric registry (`impactagent/metrics/registry.yaml`): 53 metric (42 exact, 11 calibrating); `validate-all` เช็คว่า registry ครบ/ถูก format และ calibrating ไม่ gate
 - [x] Head Accuracy: นับต่อนัด ไม่นับ AWP / ลูกซอง; นัดที่ทะลุหัวไปโดนคนที่ 2 ไม่นับเป็นหัว (inferno 10/10, mirage 10/10)
 - [x] `shots` features + `engagements` (`impactagent/parse/aim.py`) + Aim metrics (`impactagent/metrics/aim.py`); core รวม **inferno 305/305, mirage 350/350**
   - exact: `shots_fired` (ไม่นับลูกซอง และนัดใน tick ที่คนยิงตาย; Mirage holdout เจอทั้งสองกฎ), `accuracy_all`, `accuracy_head`
   - calibrating (ตรงราย player inferno / mirage): spotted acc 3/10, 6/10 · counter-strafe 2/9, 3/9 · spray 0/7, 3/8 · first bullet 1/10, 0/10 · TTK 1/10, 0/10 · TTD 0/10, 0/10 · crosshair 0/10, 0/10
   - Holdout Mirage ก่อนแก้โค้ด: core aim 9/20 (shots_fired 3/10, accuracy_all 6/10), calibrating 15/77
-- [ ] Aim calibrating: TTD / crosshair ของเราต่ำกว่า Leetify ทุกคน (เราเห็นศัตรูช้ากว่า) → ตรวจว่า mesh ของ awpy มี player clip / prop ที่ไม่บังสายตาจริงไหม, ลองจุดเป้าแบบ hitbox; spray ของ Leetify น่าจะไม่ใช่ hit/shot (yyh 0.83 ทั้งที่ accuracy 0.11)
+- [ ] Aim calibrating: TTD / crosshair ของเราต่ำกว่า Leetify ทุกคน (เราเห็นศัตรูช้ากว่า). ทดลองแล้ว: จุดเป้า 8 จุดลด TTD bias จาก −173 / −143 เหลือ −125 / −83ms (`spotted` แย่กว่า, union ช่วยนิดเดียว) → ถัดไปลอง hitbox ที่ใหญ่กว่า / capsule แล้วค่อยเปลี่ยนค่าหลัก; crosshair แทบไม่เปลี่ยน = ต้องหานิยามใหม่; spray ของ Leetify น่าจะไม่ใช่ hit/shot (yyh 0.83 ทั้งที่ accuracy 0.11)
 - [x] **Visibility module** (`impactagent/visibility/`, 2026-11-05): interface เดียว backend `spotted` (ของเกม) / `raycast` (awpy mesh) + lag window 7 tick + ควันทรงกลม + FOV 50°; `python -m impactagent visibility DEMO...` รายงานผล
   - kill ปกติที่ "เห็น" (raycast เต็ม): inferno 72/72, mirage 150/152; ผ่านควัน: 0/7, 2/7; `spotted` ของเกมเห็นแค่ ~75% ของ kill ปกติ
   - ความเร็ว: raycast ~29k คู่-tick/วินาที (inferno ทุกคู่ศัตรูทุก 4 tick = 248k คู่ ใน 8.5s + อ่าน tick 5.3s)

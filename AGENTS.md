@@ -60,8 +60,8 @@ python -m impactagent validate-all
 ```
 
 ### Next steps (Phase 1 in `docs/roadmap.md`)
-1. Re-calibrate trade opportunity / attempt with the visibility module (teammate sees the killer).
-2. Aim calibrating metrics: our TTD / crosshair are below Leetify for every player (we see enemies later); check awpy mesh clips / props and hitbox target points. Spray accuracy is probably not hits/shots.
+1. Trade opportunity / attempt: visibility-based definitions did not generalize (raycast 23/40 inferno, 11/40 mirage holdout vs current 22/40, 25/40); kept the current one. Needs per-death truth (spec §3).
+2. Aim calibrating metrics: our TTD / crosshair are below Leetify for every player (we see enemies later). 8 target points cut the TTD bias from -173 / -143 to -125 / -83 ms (spec §1); try a bigger hitbox before changing the default. Crosshair barely moves, so its definition differs. Spray accuracy is probably not hits/shots.
 3. Round buy type + Map Zones.
 4. Hypotheses in spec §8 (🟡) need a match that separates them, e.g. a kill during a ≤ 1.1s blind, capped molotov / team-HE hits. A new truth file is a holdout: run `validate-all` before changing code.
 
