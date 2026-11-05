@@ -14,28 +14,43 @@
 - **General + Utility ตรงกับ Leetify:** Inferno 245/245, Mirage 290/290 (holdout ได้ 274/290 ก่อนแก้โค้ด) สถานะของแต่ละกฎอยู่ใน spec §8
 - **Trades (succeeded) + opening traded % + opening duels + clutches:** core รวม Inferno 275/275, Mirage 320/320; opening 37/37 รอบ; clutch 43/43 (รวมเคสออกเกม, spec §8)
 
-## ⏳ Phase 1: Metrics engine (ครบหนึ่งแมตช์)
+## ✅ Phase 1: Metrics engine (ครบหนึ่งแมตช์) — ปิดแล้ว (2026-11-05)
 - [x] Trades: `trade_windows`, succeeded, opening traded %, clutches
-- [ ] Trade opportunities / attempts: ลองใหม่ด้วย visibility แล้ว (2026-11-05) raycast ได้ 23/40 บน Inferno แต่ holdout Mirage แค่ 11/40 (นิยามเดิม 22/40, 25/40) → **คงนิยามเดิม, calibrating**; ต้องมี truth ราย death (spec §3)
-- [x] Metric registry (`impactagent/metrics/registry.yaml`): 53 metric (42 exact, 11 calibrating); `validate-all` เช็คว่า registry ครบ/ถูก format และ calibrating ไม่ gate
+- [x] Metric registry (`impactagent/metrics/registry.yaml`): 54 metric (42 exact, 12 calibrating); `validate-all` เช็คว่า registry ครบ/ถูก format และ calibrating ไม่ gate
 - [x] Head Accuracy: นับต่อนัด ไม่นับ AWP / ลูกซอง; นัดที่ทะลุหัวไปโดนคนที่ 2 ไม่นับเป็นหัว (inferno 10/10, mirage 10/10)
 - [x] `shots` features + `engagements` (`impactagent/parse/aim.py`) + Aim metrics (`impactagent/metrics/aim.py`); core รวม **inferno 305/305, mirage 350/350**
   - exact: `shots_fired` (ไม่นับลูกซอง และนัดใน tick ที่คนยิงตาย; Mirage holdout เจอทั้งสองกฎ), `accuracy_all`, `accuracy_head`
   - calibrating (ตรงราย player inferno / mirage): spotted acc 3/10, 6/10 · counter-strafe 2/9, 3/9 · spray 0/7, 3/8 · first bullet 1/10, 0/10 · TTK 1/10, 0/10 · TTD 0/10, 0/10 · crosshair 0/10, 0/10
   - Holdout Mirage ก่อนแก้โค้ด: core aim 9/20 (shots_fired 3/10, accuracy_all 6/10), calibrating 15/77
-- [x] Validation pair 3 `dust2-85507dfb` (holdout ตัวจริง, 2026-11-05): ก่อนแก้โค้ด core 353/360, opening 20/20, clutch 25/25; head accuracy นับ SSG08 (ch4dum 0.62); ชื่อ non-ASCII จับคู่ครบ. ที่ยังไม่ตรง: shots_fired (taser 1 นัด), flash_assist_pct 1, flash_blind_duration_avg 1, molotov damage 1 (+1 HP), unused utility 3 คน (ต่ำกว่า $14–20)
+- [x] Validation pair 3 `dust2-85507dfb` (holdout ตัวจริง, 2026-11-05): ก่อนแก้โค้ด core 353/360, opening 20/20, clutch 25/25; head accuracy นับ SSG08 (ch4dum 0.62); ชื่อ non-ASCII จับคู่ครบ.
 - [x] Dust2 core (2026-11-05): shots_fired นับ taser; flash assist ให้เครดิตทุก flash ที่เหยื่อยังบอด; molotov damage นับเฉพาะไฟ → core 356/360 (Inferno 305/305, Mirage 350/350 ไม่พัง)
 - [x] **Known exceptions** (`impactagent/validate/known_exceptions.yaml`, 2026-11-05): ช่อง (pair, player, metric) ที่ยังไม่รู้สาเหตุ แสดงเป็น `known` ไม่ gate, ไม่ใช่ tolerance; เตือน STALE ถ้ากลับมาตรง. ตอนนี้ 4 ช่องของ Dust2 → `validate-all` ผ่านทั้ง 3 pair (Dust2 core 356/356 +4 known)
-- [ ] Dust2 4 ช่องที่ยังเปิด (spec §8): unused utility 3 คน (flash / flash / smoke), blind duration yyh (flash ที่ระเบิดหลังคนปาตาย; Mirage ขัดกัน)
 - [x] Visibility จุดเป้า 8 จุด เป็นค่าหลัก (`TARGET_LAYOUT`, 2026-11-05): capsule 24 จุดไม่ดีกว่าชัดเจน; crosshair แบบมุมไปหาหัวตอน first seen ไม่ใกล้กว่า → คงนิยามเดิม; นิยามของเราสำหรับ metric calibrating อยู่ใน spec §1 / §3
-- [ ] Aim calibrating: TTD / crosshair ของเราต่ำกว่า Leetify ทุกคน (เราเห็นศัตรูช้ากว่า). ทดลองแล้ว: จุดเป้า 8 จุดลด TTD bias จาก −173 / −143 เหลือ −125 / −83ms (`spotted` แย่กว่า, union ช่วยนิดเดียว) → ถัดไปลอง hitbox ที่ใหญ่กว่า / capsule แล้วค่อยเปลี่ยนค่าหลัก; crosshair แทบไม่เปลี่ยน = ต้องหานิยามใหม่; spray ของ Leetify น่าจะไม่ใช่ hit/shot (yyh 0.83 ทั้งที่ accuracy 0.11)
 - [x] **Visibility module** (`impactagent/visibility/`, 2026-11-05): interface เดียว backend `spotted` (ของเกม) / `raycast` (awpy mesh) + lag window 7 tick + ควันทรงกลม + FOV 50°; `python -m impactagent visibility DEMO...` รายงานผล
   - kill ปกติที่ "เห็น" (raycast เต็ม): inferno 72/72, mirage 150/152; ผ่านควัน: 0/7, 2/7; `spotted` ของเกมเห็นแค่ ~75% ของ kill ปกติ
-  - ความเร็ว: raycast ~29k คู่-tick/วินาที (inferno ทุกคู่ศัตรูทุก 4 tick = 248k คู่ ใน 8.5s + อ่าน tick 5.3s)
+  - ความเร็ว: raycast ~29k คู่-tick/วินาที
 - [x] Visibility v1 (raycast กับ map geometry)
-  - [x] Spike awpy 3.1.1 `VisibilityChecker` (`scripts/visibility_spike.py`, ยังไม่เข้า metrics): kill ปกติ "เห็น" 95.8% (inferno 69/72) / 95.4% (mirage 145/152), penetrated เห็นแค่ 1/2 และ 1/8, ~3-4 µs ต่อ ray, mesh โหลด < 0.1s
-  - [x] Kill ที่ "ไม่เห็น" (~4-5%) มาจาก lag compensation: ย้อนตำแหน่งคนตาย 2-7 tick แล้วเห็นครบ 72/72 และ 152/152; ไม่มีจุดชน mesh ใกล้ตัว < 16 unit (ไม่ใช่ player clip); eye height ใช้ `m_flDuckViewOffset` (demo ไม่มี `m_vecViewOffset`); ย้อนแล้ว penetrated "เห็น" เพิ่มจาก 1/8 เป็น 2/8 บน mirage
-- [ ] Round buy type (pistol / eco / semi-eco / force / full) + Map Zones (`last_place_name`)
+  - [x] Spike awpy 3.1.1 `VisibilityChecker` (`scripts/visibility_spike.py`)
+  - [x] Lag compensation window 7 tick ย้อนเห็นครบ normal kills 100%
+- [x] **Round buy type + Map Zones** (2026-11-05):
+  - Buy types: `pistol` (รอบแรกของแต่ละครึ่ง/OT), `eco` (< $1,500), `semi-eco` ($1,500–2,499), `force` ($2,500–3,899), `full` (≥ $3,900) คำนวณจากมูลค่าอุปกรณ์เฉลี่ยของทีมตอน freeze end บันทึกลง `rounds`
+  - Map Zones: เพิ่ม `attacker_place`, `victim_place` ใน `damages` (และ `kills` ที่มีอยู่เดิม) พร้อมสร้างตารางสรุป `player_zones` (kills/deaths ต่อโซน แยก T/CT)
+  - เพิ่ม metric `equip_value_avg` ลง registry (calibrating, นิยามของเรา) และ `validate-all` ผ่านครบทุก pair (exit 0)
+
+---
+
+## 📌 นิยามของเรา / Known Exceptions (ข้อที่ค้างและสมมติฐาน)
+- **Trade opportunities / attempts:** ลองใหม่ด้วย visibility แล้ว raycast ได้ 23/40 บน Inferno แต่ holdout Mirage แค่ 11/40 (นิยามเดิม 22/40, 25/40) → คงนิยามเดิม, calibrating; ต้องมี truth ราย death เพื่อ calibrate ต่อ (spec §3)
+- **Dust2 4 ช่อง known exceptions (spec §8):**
+  - unused utility 3 คน (Chainnizy -$200, gxmxi -$200, โจ๊กเก๊า -$300 ขาดไปคนละลูก Flash/Flash/Smoke): ตรวจ inventory timing (-64..0 tick), active weapon, เก็บของตกพื้น, C4/world death แล้วไม่พบสาเหตุที่เข้ากับทั้ง 3 คน
+  - blind duration yyh (3.15 vs 3.00): ตัดลูก r16 (yyh ปาแล้วตายก่อนระเบิดลง) จะได้ 3.00 พอดี แต่ขัดแย้งกับ Mirage ch4dum r21 ที่ Leetify นับปกติ
+- **Aim calibrating metrics (spec §1 / §3):**
+  - TTD bias: 8 target points ลด bias เหลือ -125 / -83 / -105 ms (24 จุด capsule กิน ray x7 ไม่ช่วยลด bias ชัดเจน)
+  - Crosshair placement: นิยาม 3D head-angle ไม่ใกล้ขึ้น คงนิยามเดิม
+  - Spray accuracy: Leetify ไม่ได้คิดแบบ hit/shot ธรรมดา (yyh 0.83 ทั้งที่ accuracy 0.11) คงสถานะ calibrating
+- **Hypotheses ใน spec §8 (🟡):** รอ demo แมตช์ใหม่ที่แยกเคสได้ เช่น kill ระหว่างบอด ≤ 1.1s, capped molotov / team-HE hits
+
+---
 
 ## ⏳ Phase 2: Ratings (สูตรของเราเอง ไม่ใช้ชื่อ Leetify)
 - [ ] Impact Rating: win-probability model + breakdown 9 หมวด
@@ -58,10 +73,19 @@
 - [ ] ตัดสินใจ stack + mockup
 - [ ] Match page, Your Match + แชท AI, หน้าอัปโหลด, profile
 
-## ⏳ Phase 6: Deploy
-- [ ] Subdomain บน `tammapol.com` (Cloudflare) เช่น `impactagent.tammapol.com` จนกว่าจะได้ชื่อ product
-- [ ] VPS สำหรับ API + worker, login ด้วย Steam
-- [ ] Rate limit / คุมค่า LLM, Terms / Privacy
+## ⏳ Phase 6: Deploy & Architecture
+- [ ] **Frontend:** Deploy บน **Vercel**
+- [ ] **Storage:** อัปโหลด `.dem.bz2` ตรงไปยัง Cloudflare **R2** ด้วย Presigned URL
+- [ ] **Database & Queue:** ตาราง `jobs` บน **Supabase** (สถานะคิว, retry, progress)
+- [ ] **Worker (ระยะเริ่มต้น):** เครื่อง Laptop ทำหน้าที่เป็น **pull-worker**
+  - รันใน Docker container (`restart: always`)
+  - จำกัด resource (RAM / CPU) ไม่ให้กระทบการทำงานทั่วไป
+  - ใช้ API key สิทธิ์จำกัด (Service Role / scoped key)
+  - มีระบบ heartbeat รายงานสถานะเครื่องว่าพร้อมรับงาน
+  - ทำ preload / cache สำหรับ awpy mesh ไว้ในเครื่อง
+- [ ] **Worker Scaling (ระยะเติบโต):** ย้าย worker ไปยัง Cloud **VPS (RAM ≥ 4GB)** เมื่อมีปริมาณผู้ใช้งานเพิ่มขึ้น
+- [ ] **Domain:** Subdomain บน `tammapol.com` (Cloudflare) เช่น `impactagent.tammapol.com` จนกว่าจะได้ชื่อ product
+- [ ] **Security & Policy:** Rate limit / คุมค่า LLM, Terms of Service / Privacy Policy
 
 ## หลัง MVP
 ดึงแมตช์อัตโนมัติด้วย share code · benchmark ตาม rank · Focus Areas · 2D Replay · Highlights
@@ -76,7 +100,8 @@
 | Branches | `main` = rebuild (เดิมชื่อ `v2`, default บน GitHub) · `v1-draft` = prototype เดิม (เดิมชื่อ `main`) ไว้อ้างอิงเท่านั้น (2026-11-05) |
 | ชื่อ product | ยังไม่ตัดสินใจ (ห้ามมี CS2 / Counter-Strike) |
 | LLM | Gemini API free tier + export ให้ user ใช้ AI ของตัวเอง |
-| Buy type thresholds | ยังไม่ตัดสินใจ (Leetify ไม่เปิดเผย) |
+| Buy type thresholds | **นิยามของเราเอง** (2026-11-05): pistol = รอบแรกของแต่ละครึ่ง/OT, eco < $1,500, semi-eco $1,500–2,499, force $2,500–3,899, full ≥ $3,900 |
+| Map Zones | **last_place_name** เก็บใน kills, damages และสรุปเป็น table `player_zones` (kills/deaths ต่อโซน แยก T/CT) (2026-11-05) |
 | Visibility | **raycast เป็นค่าหลัก** `spotted` ยังสลับใช้ได้ (`spotted` เห็น kill ปกติแค่ ~75%) (2026-11-05) |
 | Lag compensation | **window คงที่ 7 tick** (เป้าหมายตำแหน่งใดก็ได้ใน 7 tick ล่าสุด) ไม่ย้อนตาม ping: tick ที่ต้องย้อนไม่สัมพันธ์กับ ping ของคนยิง (rank corr 0.01, 64 hit, ping 13–57ms) (2026-11-05) |
 | Aim shot set | นัดที่นับใน accuracy ทุกตัว = ปืน + **taser** (ไม่นับมีด / ระเบิด / **ลูกซอง**) ทั้งช่วงรอบรวมหลัง round_end ยกเว้นนัดใน tick ที่คนยิงตาย; hit = ทำ damage ศัตรูใน tick เดียวกัน (2026-11-05) |

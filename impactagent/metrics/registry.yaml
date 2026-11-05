@@ -125,6 +125,21 @@
   scopes: [all]
   status: exact
 
+- id: equip_value_avg
+  label: Equipment Value per Round
+  category: general
+  unit: $
+  format: "0"
+  direction: neutral
+  aggregation: ratio
+  numerator: sum of freeze_end equip_value
+  denominator: rounds played
+  source: player_rounds.equip_value
+  scopes: [all]
+  coach_hint: Average equipment value at freeze end per round.
+  status: calibrating
+  note: our own definition
+
 - id: multi2k
   label: 2-Kill Rounds
   category: general

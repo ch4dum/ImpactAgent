@@ -54,6 +54,17 @@ MIN_BLIND_SECONDS = 1.1
 # (succeeded) on inferno-44a522c3 + mirage-65db631a bound it to [3.48, 4.47) s; 4.0 is inside.
 TRADE_WINDOW_SECONDS = 4.0
 
+# ---- round buy types (our own definition, spec §8 / data-model §2.2)
+BUY_TYPE_PISTOL = "pistol"
+BUY_TYPE_ECO = "eco"
+BUY_TYPE_SEMI_ECO = "semi-eco"
+BUY_TYPE_FORCE = "force"
+BUY_TYPE_FULL = "full"
+
+BUY_THRESHOLD_ECO_MAX = 1500       # < $1,500 is eco
+BUY_THRESHOLD_SEMI_ECO_MAX = 2500  # $1,500 - $2,499 is semi-eco
+BUY_THRESHOLD_FORCE_MAX = 3900     # $2,500 - $3,899 is force, >= $3,900 is full
+
 # ---- parse safety (user uploads)
 # Max size of a demo after decompression (and of a plain .dem). Real demos are 80-330 MB.
 MAX_DEMO_BYTES = 1 << 30  # 1 GiB

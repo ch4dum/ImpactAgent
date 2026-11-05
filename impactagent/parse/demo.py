@@ -19,6 +19,14 @@ import pandas as pd
 from demoparser2 import DemoParser
 
 from impactagent.constants import (
+    BUY_THRESHOLD_ECO_MAX,
+    BUY_THRESHOLD_FORCE_MAX,
+    BUY_THRESHOLD_SEMI_ECO_MAX,
+    BUY_TYPE_ECO,
+    BUY_TYPE_FORCE,
+    BUY_TYPE_FULL,
+    BUY_TYPE_PISTOL,
+    BUY_TYPE_SEMI_ECO,
     DEFAULT_TICKRATE,
     GRENADE_WEAPONS,
     MAX_DEMO_BYTES,
@@ -52,6 +60,7 @@ class ParsedDemo:
     trade_windows: pd.DataFrame = field(default_factory=pd.DataFrame)
     smokes: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=SMOKE_COLUMNS))
     engagements: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=ENGAGEMENT_COLUMNS))
+    player_zones: pd.DataFrame = field(default_factory=pd.DataFrame)
     visibility_backend: str = ""  # backend used for shots.enemy_spotted / engagements
     client_build: int | None = None  # csgo_v<build> from the header: picks the map mesh release
     warnings: list[str] = field(default_factory=list)
@@ -71,6 +80,7 @@ class ParsedDemo:
             "trade_windows": self.trade_windows,
             "smokes": self.smokes,
             "engagements": self.engagements,
+            "player_zones": self.player_zones,
         }
 
 
@@ -352,6 +362,32 @@ def _parse_in_child(dem_path: Path, path: Path, sha256: str, timeout: float) -> 
         out.unlink(missing_ok=True)
 
 
+def _build_player_zones(kills: pd.DataFrame) -> pd.DataFrame:
+    """Summary of kills and deaths per player per zone separated by side (T/CT)."""
+    cols = ["steam_id", "side", "zone", "kills", "deaths"]
+    if kills.empty:
+        return pd.DataFrame(columns=cols)
+    k = kills[~kills.get("post_match", False)]
+    k_valid = k[~k["is_team_kill"] & ~k["is_suicide"] & k["attacker_id"].notna() & k["attacker_place"].notna() & k["attacker_side"].notna()]
+    d_valid = k[k["victim_id"].notna() & k["victim_place"].notna() & k["victim_side"].notna()]
+    k_grp = (
+        k_valid.groupby(["attacker_id", "attacker_side", "attacker_place"])
+        .size()
+        .reset_index(name="kills")
+        .rename(columns={"attacker_id": "steam_id", "attacker_side": "side", "attacker_place": "zone"})
+    )
+    d_grp = (
+        d_valid.groupby(["victim_id", "victim_side", "victim_place"])
+        .size()
+        .reset_index(name="deaths")
+        .rename(columns={"victim_id": "steam_id", "victim_side": "side", "victim_place": "zone"})
+    )
+    pz = pd.merge(k_grp, d_grp, on=["steam_id", "side", "zone"], how="outer").fillna({"kills": 0, "deaths": 0})
+    pz["kills"] = pz["kills"].astype(int)
+    pz["deaths"] = pz["deaths"].astype(int)
+    return pz.sort_values(["steam_id", "side", "zone"]).reset_index(drop=True)
+
+
 def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
     warnings: list[str] = []
     parser = DemoParser(str(dem_path))
@@ -363,13 +399,14 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
 
     rounds = _build_rounds(parser, tickrate, warnings)
 
-    # ---- sides per round (team_num of every player at freeze end)
-    snap = pd.DataFrame(parser.parse_ticks(["team_num"], ticks=rounds["freeze_end_tick"].tolist()))
+    # ---- sides and equipment per round (at freeze end)
+    snap = pd.DataFrame(parser.parse_ticks(["team_num", "current_equip_value"], ticks=rounds["freeze_end_tick"].tolist()))
     snap["steam_id"] = _sid(snap["steamid"])
     snap = snap[snap["steam_id"].notna() & snap["team_num"].isin([2, 3])]
     snap = snap.merge(rounds[["round_no", "freeze_end_tick"]], left_on="tick", right_on="freeze_end_tick")
     snap["side"] = _side(snap["team_num"])
-    player_rounds_side = snap[["round_no", "steam_id", "name", "side"]].reset_index(drop=True)
+    snap["equip_value"] = snap.get("current_equip_value", 0).fillna(0).astype(int)
+    player_rounds_side = snap[["round_no", "steam_id", "name", "side", "equip_value"]].reset_index(drop=True)
 
     # Team "a" = players on CT in round 1.
     r1 = player_rounds_side[player_rounds_side["round_no"] == 1]
@@ -386,6 +423,25 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
     )
     rounds["ct_team"] = rounds["round_no"].map(side_by_round)
     rounds["t_team"] = np.where(rounds["ct_team"] == "a", "b", "a")
+
+    # Round buy types (average equipment value per team at freeze end)
+    def _classify_buy(val: float, r_no: int) -> str:
+        if r_no in (1, 13):  # MR12 regulation halves; OT starts with fixed money, not a pistol round
+            return BUY_TYPE_PISTOL
+        if val < BUY_THRESHOLD_ECO_MAX:
+            return BUY_TYPE_ECO
+        if val < BUY_THRESHOLD_SEMI_ECO_MAX:
+            return BUY_TYPE_SEMI_ECO
+        if val < BUY_THRESHOLD_FORCE_MAX:
+            return BUY_TYPE_FORCE
+        return BUY_TYPE_FULL
+
+    ct_eq = snap[snap["side"] == "CT"].groupby("round_no")["equip_value"].mean().round()
+    t_eq = snap[snap["side"] == "T"].groupby("round_no")["equip_value"].mean().round()
+    rounds["ct_equip_value"] = rounds["round_no"].map(ct_eq).fillna(0).astype(int)
+    rounds["t_equip_value"] = rounds["round_no"].map(t_eq).fillna(0).astype(int)
+    rounds["ct_buy_type"] = [_classify_buy(v, r) for v, r in zip(rounds["ct_equip_value"], rounds["round_no"])]
+    rounds["t_buy_type"] = [_classify_buy(v, r) for v, r in zip(rounds["t_equip_value"], rounds["round_no"])]
 
     # ---- kills
     k = _event(parser, "player_death", POS_PROPS)
@@ -427,7 +483,7 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
     ]
 
     # ---- damages
-    d = _event(parser, "player_hurt", ["team_num"])
+    d = _event(parser, "player_hurt", POS_PROPS)
     d = _assign_round(d, rounds)
     damages = pd.DataFrame(
         {
@@ -442,6 +498,10 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
             "victim_hp_after": d["health"].astype(int),
             "attacker_side": _side(d["attacker_team_num"]) if "attacker_team_num" in d else None,
             "victim_side": _side(d["user_team_num"]) if "user_team_num" in d else None,
+            "attacker_place": d.get("attacker_last_place_name"),
+            "victim_place": d.get("user_last_place_name"),
+            "attacker_x": d.get("attacker_X"), "attacker_y": d.get("attacker_Y"), "attacker_z": d.get("attacker_Z"),
+            "victim_x": d.get("user_X"), "victim_y": d.get("user_Y"), "victim_z": d.get("user_Z"),
         }
     ).reset_index(drop=True)
     damages["dmg_effective"] = _effective_damage(damages)
@@ -570,9 +630,11 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
     trade_windows = build_trade_windows(
         parser, kills, damages, shots, player_rounds_side, tickrate, TRADE_WINDOW_SECONDS
     )
+
     shots, engagements, vis_backend = build_aim_tables(
         parser, shots, damages, kills, player_rounds_side, smokes, map_name, client_build, tickrate, warnings
     )
+    player_zones = _build_player_zones(kills)
     return ParsedDemo(
         path=path,
         sha256=sha256,
@@ -591,6 +653,7 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
         trade_windows=trade_windows,
         smokes=smokes,
         engagements=engagements,
+        player_zones=player_zones,
         visibility_backend=vis_backend,
         client_build=client_build,
         warnings=warnings,

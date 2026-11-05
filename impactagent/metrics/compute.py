@@ -117,6 +117,7 @@ def general_metrics(p: ParsedDemo, pr: pd.DataFrame) -> pd.DataFrame:
     out["kast"] = out["kast_rounds"] / out["rounds"]
     out["hs_kill_pct"] = out["hs_kills"] / out["kills"].replace(0, np.nan)
     out["rounds_survived_pct"] = out["rounds_survived"] / out["rounds"]
+    out["equip_value_avg"] = (g["equip_value"].sum() / out["rounds"]).round().astype(int)
 
     # HLTV Rating 1.0 (public formula)
     kpr = out["kills"] / out["rounds"]

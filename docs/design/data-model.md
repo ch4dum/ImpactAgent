@@ -49,7 +49,7 @@
 | win_reason | `elimination` · `bomb_exploded` · `defused` · `time` |
 | plant_tick, plant_site | nullable, ใช้แยก pre-plant/post-plant |
 | ct_equip_value, t_equip_value | มูลค่าอุปกรณ์ตอน freeze end |
-| ct_buy_type, t_buy_type | `pistol` · `eco` · `semi_eco` · `force` · `full` |
+| ct_buy_type, t_buy_type | `pistol` · `eco` · `semi-eco` · `force` · `full` (เกณฑ์: pistol = รอบแรกของแต่ละครึ่ง/OT, eco < $1,500, semi-eco $1,500–2,499, force $2,500–3,899, full ≥ $3,900) |
 
 **`player_rounds`** (1 แถวต่อผู้เล่นต่อรอบ เป็นฐานของ General, KAST, economy split)
 | column | หมายเหตุ |
@@ -68,7 +68,7 @@
 **`kills`** (เก็บใน Postgres ด้วย เพราะใช้บ่อย)
 match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash_assister_id, weapon, headshot, wallbang, through_smoke, noscope, attacker_blind, attacker_side, victim_side, is_team_kill, **attacker_xyz, victim_xyz, attacker_place, victim_place**, is_opening, **traded_by_kill_tick** (nullable), is_trade_kill, **post_match** (death หลัง `cs_win_panel_match` เช่น world suicide ตอนขึ้น scoreboard: ทุก metric ต้องกรองทิ้ง ยกเว้นตัวหารของ unused utility), **by_disconnect** (suicide/world ที่ tick เดียวกับ `player_disconnect` ของคนตาย: ยังนับเป็น death ใน General แต่ clutch outcome ไม่นับว่าตาย)
 
-**`damages`**: match_id, round_no, tick, attacker_id, victim_id, weapon, hitgroup, dmg_raw, **dmg_effective** (HP ที่หายจริง: cap ที่ HP ที่เหลือ และทุก hit ใน tick ที่ฆ่ารวมกัน = HP ที่เหลือก่อน tick นั้น; HE damage ใน metric utility ใช้ dmg_raw), dmg_armor, victim_hp_after, is_team
+**`damages`**: match_id, round_no, tick, attacker_id, victim_id, weapon, hitgroup, dmg_raw, **dmg_effective** (HP ที่หายจริง: cap ที่ HP ที่เหลือ และทุก hit ใน tick ที่ฆ่ารวมกัน = HP ที่เหลือก่อน tick นั้น; HE damage ใน metric utility ใช้ dmg_raw), dmg_armor, victim_hp_after, is_team, attacker_side, victim_side, **attacker_place, victim_place, attacker_xyz, victim_xyz**
 
 **`death_inventory`**: match_id, tick, steam_id, inventory (list ชื่อ item), active_weapon. หนึ่งแถวต่อการตาย (เฉพาะคนที่ตาย ณ tick นั้น อ่านจาก tick − 1). ใช้คิด unused utility
 
@@ -83,6 +83,8 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash
 **`bomb_events`**: match_id, round_no, tick, steam_id, type (`plant`/`defuse_start`/`defuse`/`explode`), site
 
 ### 2.4 Derived
+**`player_zones`**: steam_id, side (`CT`/`T`), zone (`last_place_name`), kills, deaths (สรุปการฆ่าและการตายต่อผู้เล่นแยกตามโซนและฝั่ง)
+
 **`engagements`** (A → B ครั้งหนึ่ง)
 | column | หมายเหตุ |
 |---|---|
@@ -237,5 +239,4 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash
 
 ## 7. ยังไม่ตัดสินใจ
 - Trade window: ช่วง [3.48, 4.47) s ใช้ 4.0 (spec §3); นิยาม trade opportunity / attempt รอ visibility
-- เกณฑ์ buy type (มูลค่าอุปกรณ์เท่าไหร่ = eco/force/full)
 - Postgres แบบ self-host หรือ Supabase
