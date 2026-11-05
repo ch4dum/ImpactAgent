@@ -104,6 +104,21 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, **fla
 
 **`clutches`**: match_id, round_no, steam_id, side, vs_n, start_tick, kills, outcome (`won`/`lost`/`saved`) (derive จาก kills + player_rounds_side + rounds ไม่ต้อง parse ใหม่)
 
+**`wp_states`** (impact-spec §2.1, Parquet `data/parsed/wp_states.parquet` สำหรับ train; สร้างใหม่ทุกครั้งใน `build_rating_events`): 1 แถวต่อ state (freeze_end, kill, plant, defuse, explode, round_end) · ข้อมูลจาก tick อ่านเฉพาะ state tick (และ tick − 1 สำหรับ `ct_defusing_pre`) ไม่เก็บ tick data
+| column | dtype | หมายเหตุ |
+|---|---|---|
+| match_id, map, round_no, tick | string, string, int64, int64 | |
+| event_type, event_ref | string | |
+| t_alive, ct_alive | int64 | นับจาก kills หลัง event |
+| bomb_planted | int8 | |
+| time_left_s | float64 | ก่อน plant = เวลารอบที่เหลือ, หลัง plant = เวลาก่อน C4 ระเบิด |
+| equip_diff_k | float64 | (Σ equip T − CT ที่รอด)/1000 |
+| ct_has_kit | bool | CT ที่รอดหลัง event ≥ 1 คนมี `has_defuser` |
+| ct_defusing | bool | มี defuse ที่กำลังกู้และจะทันเวลา หลัง event (`is_defusing` ณ tick) |
+| ct_defusing_pre | bool | เหมือน `ct_defusing` แต่ก่อน event (tick − 1); credit ใช้เป็น wp_pre |
+| t_won | int8 | label |
+| trainable | bool | false = WP ตายตัวตามกฎ (round_end, defuse, explode, ฝั่งหนึ่งตายหมด) |
+
 **`rating_events`** (impact-spec §3, Parquet `data/parsed/<demo>/rating_events.parquet`, ใช้ทำ Rating Breakdown): 1 แถวต่อ (state, part, ผู้รับ)
 | column | dtype | หมายเหตุ |
 |---|---|---|

@@ -1,6 +1,6 @@
 # Impact & RWS Spec (Phase 2) — v0.1 draft
 
-สถานะ: **v1 — Phase 2 ปิดแล้ว** (2026-11-05) · ชื่อที่แสดงให้ผู้ใช้เห็นต้องเป็นของเราเอง (ไม่ใช้ "Swing" ของ FACEIT / ชื่อของ Leetify)
+สถานะ: **v1 — Phase 2 ปิดแล้ว** (2026-11-05) · WP model v2 (kit + defuse ที่กำลังกู้) ใช้งานตั้งแต่ 2026-11-06 (§2.2.2) · ชื่อที่แสดงให้ผู้ใช้เห็นต้องเป็นของเราเอง (ไม่ใช้ "Swing" ของ FACEIT / ชื่อของ Leetify)
 
 ## 0. ชื่อ
 | ชื่อ | ใช้ที่ไหน | ความหมาย |
@@ -30,6 +30,8 @@ Rating รวม (แบบ 1.70 ของ FACEIT) ยังไม่ทำ จ�
   - `time_left_s`: ก่อน plant = เวลารอบที่เหลือ, หลัง plant = เวลาก่อนระเบิด (แยก coefficient ก่อน/หลัง plant ด้วย interaction)
   - `equip_diff_k`: (Σ equip value T ที่ยังรอด − Σ CT ที่ยังรอด)/1000 ณ tick นั้น (อ่านจาก tick data ที่ tick ของ event ไม่ต้องเก็บ tick data ทั้งหมด)
   - `map` (one-hot, ใช้เป็น intercept ประจำแมพ)
+  - `ct_has_kit` (bool, v2): CT ที่ยังรอดหลัง event อย่างน้อย 1 คนมีคีม (`has_defuser` ณ state tick)
+  - `ct_defusing` / `ct_defusing_pre` (bool, v2): มี defuse ที่กำลังกู้และจะทันเวลา ณ หลัง event (tick) / ก่อน event (tick − 1) นิยามใน §2.2.2
 - label: `t_won` ของรอบนั้น
 - ตัดทิ้ง: warmup, post_match, รอบที่ไม่สมบูรณ์ (ไม่มี winner)
 
@@ -37,13 +39,13 @@ Rating รวม (แบบ 1.70 ของ FACEIT) ยังไม่ทำ จ�
 - Logistic regression + L2 regularization (ค่าปรับประจำแมพจะหดเข้าหา 0 เองถ้าข้อมูลน้อย; แมพที่ < 5 แมตช์ตั้งเป็น 0)
 - ห้าม pip install เพิ่ม: เช็คก่อนว่า env มี `scikit-learn` / `statsmodels` ไหม ถ้าไม่มีให้เขียน IRLS / gradient descent ด้วย numpy (ไม่กี่สิบบรรทัด)
 - weight: ทุกแถวในรอบเดียวกันมี label เดียวกัน → ให้ weight = 1/จำนวนแถวของรอบ (ทุกรอบมีน้ำหนักเท่ากัน)
-- บันทึก model เป็น `impactagent/ratings/wp_model_v1.json` (coefficients + feature list + training manifest hash) ไม่ใช้ pickle
+- บันทึก model เป็น JSON (coefficients + feature list + training manifest hash) ไม่ใช้ pickle: `impactagent/ratings/wp_model_v1.json` (เก็บไว้ ไม่เขียนทับ) และ **`wp_model_v2.json` = ตัวที่ระบบใช้** (`wp_model._MODEL_PATH`, default ของ `train-wp --out`)
 - แบ่ง train/test ตาม **แมตช์** (ไม่ใช่ตามแถว)
 
 ### 2.2.1 ผล v1 (2026-11-05, `python -m impactagent train-wp data/parsed/wp_states.parquet`)
 - ข้อมูล 30 แมตช์ · 639 รอบ · 4,962 แถว trainable · GroupKFold 5 fold ตามแมตช์ · weight = 1/แถว trainable ของรอบ · standardize feature (mean/std เก็บใน JSON, `predict_wp` ใช้ numpy อย่างเดียว) · C จาก {0.01, 0.1, 1, 10} ตาม log loss
 - **feature ที่เลือก = ชุด D**: `t_alive, ct_alive, bomb_planted, time_left_pre, time_left_post, equip_diff_k, map_dust2, map_mirage, alive_prod, ct_can_defuse` (C = 1)
-  - `ct_can_defuse` = หลัง plant และ C4 เหลือ ≥ 5s ถ้า CT ที่รอดมี kit ไม่งั้น ≥ 10s; **wp_states ยังไม่มีข้อมูล kit → ใช้ ≥ 10s ทุกแถว** (เพิ่ม column `ct_has_kit` ทีหลังได้ `feature_matrix` อ่านให้เองถ้ามี)
+  - `ct_can_defuse` = หลัง plant และ C4 เหลือ ≥ 5s ถ้า CT ที่รอดมี kit ไม่งั้น ≥ 10s; v1 train ตอนที่ wp_states ยังไม่มีข้อมูล kit → ใช้ ≥ 10s ทุกแถว (v2 ใช้ kit + defuse ที่กำลังกู้ §2.2.2)
 - CV (round-weighted, mean ± std):
 
 | ชุด | C | Brier | log loss |
@@ -56,10 +58,47 @@ Rating รวม (แบบ 1.70 ของ FACEIT) ยังไม่ทำ จ�
 
 - เหตุที่เลือก D ไม่ใช่ A (log loss ต่ำสุด): ต่างกัน 0.002 น้อยกว่า std ระหว่าง fold (~0.009) แต่ใน A `time_left_post` เป็นบวก (C4 เหลือน้อย → WP ของ T ลดลง ผิดทิศ: 2v2 planted 30s 64.8% → 3s 62.4%) ส่วน D แก้ได้ (2v2 planted 12s 59.0% → 8s 91.0%) และ round-start WP ใกล้ FACEIT กว่า (ด้านล่าง). map one-hot ทำให้ CV แย่ลงนิดหน่อย (B > A) แต่ยังเก็บไว้เพราะเป็น intercept ประจำแมพตาม §2.2 และหดเข้าหา 0 อยู่แล้ว
 - coefficients ชุด D (standardized / ต่อหน่วย): t_alive +1.40 / +1.017 · ct_alive −0.78 / −0.565 · bomb_planted +0.96 / +2.64 · time_left_pre +0.17 / +0.0047 · time_left_post +0.14 / +0.011 · **equip_diff_k +0.88 / +0.079 (บวก ✓)** · map_dust2 −0.08 · map_mirage −0.16 · alive_prod −0.54 / −0.070 · **ct_can_defuse −0.71 / −1.99** · intercept −0.05
-  - ข้อสังเกต: ภายในช่วงที่ CT ยังกู้ทัน (≥ 10s) `time_left_post` ยังบวกเล็กน้อย (30s 63.7% → 12s 59.0%) น่าจะเป็น selection (state ท้าย afterplant ที่ T ยังไม่ชนะมักเป็นตอน CT retake) แต่ขั้นที่ 10s ใหญ่กว่ามาก → โดยรวมเวลาน้อยไม่ทำให้ T แย่ลง; ช่วง 5–10s ที่ CT มี kit จะถูกประเมินสูงไปจนกว่าจะมีข้อมูล kit
+  - ข้อสังเกต: ภายในช่วงที่ CT ยังกู้ทัน (≥ 10s) `time_left_post` ยังบวกเล็กน้อย (30s 63.7% → 12s 59.0%) น่าจะเป็น selection (state ท้าย afterplant ที่ T ยังไม่ชนะมักเป็นตอน CT retake) แต่ขั้นที่ 10s ใหญ่กว่ามาก → โดยรวมเวลาน้อยไม่ทำให้ T แย่ลง; ช่วง 5–10s ที่ CT มี kit ถูกประเมินสูงไป (แก้ใน v2, §2.2.2)
 - reliability (out-of-fold ชุด D, 10 ช่อง, pred / actual): 0.048/0.045 · 0.146/0.155 · 0.247/0.266 · 0.347/0.348 · 0.448/0.446 · 0.545/0.537 · 0.650/0.635 · 0.748/0.758 · 0.854/0.825 · 0.956/0.955 (ห่างไม่เกิน 0.03 ทุกช่อง)
 - sanity (WP ของ T): 5v5 freeze end full buy (equip −2.5k) 44.9% · equip 0 49.8% · 5v4 90s 72.2% > 5v5 90s 46.9% ✓ · 4v4 40s ก่อน plant 45.7% → หลัง plant 67.6% ✓ · eco T (−15k) 23.3% · eco CT (+15k) 76.5% ✓
 - **FACEIT round-start WP** (demo 1-8020514f แยก ไม่รวม train, `data/parsed/wp_states_faceit.parquet` สร้างจาก `--faceit-demo`): team_haineieie เป็น T 5 รอบ เฉลี่ย **62.3%** (FACEIT ≈ 61%) · เป็น CT 12 รอบ **54.4%** (FACEIT ≈ 55%) (ชุด A ได้ 64.9% / 52.3%)
+
+### 2.2.2 v2: defuse kit + defuse ที่กำลังกู้ (2026-11-06) — ตัวที่ระบบใช้
+- **ปัญหาใน v1:** `ct_can_defuse` ใช้ ≥ 10s ทุกแถว → ช่วง C4 เหลือ 5–10s ถือว่า CT กู้ไม่ทันแม้มีคีม (train 30 แมตช์: 36 รอบมี state ในช่วงนี้, CT ชนะ 16; ถ้า CT มีคีม ชนะ 12/17 · state ที่ model ทายช่วง 5–10s มีคีม CT ชนะ 38%, ไม่มีคีม 0%) และ model ไม่รู้ว่ามีคนกำลังกู้ → กู้เสร็จตอนเหลือ < 5s ทำให้ wp_pre ของ defuse สูงเกินจริง
+- **`ct_can_defuse` (v2)** = หลัง plant และ (C4 เหลือ ≥ 5s ถ้า `ct_has_kit` ไม่งั้น ≥ 10s **หรือ** `ct_defusing`) · ไม่เพิ่ม feature ใหม่ (feature set D เดิม)
+- **"กำลังกู้" ณ tick t** (`wp_states._defuse_intervals` + `is_defusing`) ต้องครบ 3 ข้อ:
+  1. มี `bomb_begindefuse` ที่ tick b ≤ t ที่เริ่มตอน C4 เหลือ ≥ เวลากู้ของ **คนที่กด** (`haskit` ใน event: 5s / ไม่มี 10s)
+  2. defuse นั้นยังไม่จบ: ยังไม่ถึง b + เวลากู้เต็ม (+2 tick, `DEFUSE_END_SLACK_TICKS`), ยังไม่ `bomb_defused`, คนกู้ยังไม่ตาย, คนเดิมยังไม่ `bomb_abortdefuse` / `bomb_begindefuse` ใหม่
+  3. คนกู้คนนั้นยัง `is_defusing` = True ณ tick t (`ct_defusing`) หรือ t − 1 (`ct_defusing_pre`)
+  - ไม่มี look-ahead: ทุกข้อใช้ event ที่เกิดแล้ว ณ tick นั้น (ข้อ 2 = "ยังไม่มี event ที่ทำให้จบ" ซึ่งรู้ได้ ณ t)
+- **CS2 ไม่ยิง `bomb_abortdefuse`** (0 ครั้งในทุก demo ที่ตรวจ) การปล่อยมือเห็นได้จาก prop `is_defusing` ราย tick เท่านั้น (ข้อ 3) หรือเห็นเป็น `bomb_begindefuse` ซ้ำ · ถ้าไม่มีข้อ 3 จะ flag ผิดในเคสปล่อยมือไปยิง (เช่น ปล่อยตอนเหลือ 8s แล้วยิงคนตอนเหลือ 5.5s) ทำให้ CV ช่วง 5–10s แย่ลงเป็น 0.587
+- **ไม่เพิ่ม state ที่ begindefuse / abort** (เลือกแบบแก้น้อยสุดแต่ถูก): ถ้าเพิ่ม state ต้องมี event_type / category ใหม่, แก้การแบ่งเครดิตและ invariant, และจำนวน state ของทุกแมตช์เปลี่ยน · แบบ flag ใช้ state เดิมทั้งหมด แค่เพิ่ม column ใน wp_states · ต้องมี `ct_defusing_pre` แยก เพราะ defuse มักเริ่มหลัง state ก่อนหน้า (wp_pre ของ e ใช้ flag ของแถว e เอง ไม่ใช่ของ state ก่อนหน้า, §3.1)
+- ข้อมูลใหม่: `parse_ticks` ตัวเดิมของ `_read_timers_and_equip` เพิ่ม `has_defuser`, `is_defusing` ที่ state tick และ tick − 1 · `wp-states` 34 demo ใช้ ~7.5 นาที
+- train: state ที่ train ได้ (trainable) ที่ `ct_defusing` = True มีแค่ 7 แถว และทุกแถวเวลาพออยู่แล้ว → model v2 เท่ากันทั้งแบบ kit อย่างเดียวและแบบ kit + กำลังกู้ (ผลของ "กำลังกู้" อยู่ที่ wp_pre ใน credit: `ct_defusing_pre` 146 แถว)
+
+| | v1 | v2 (kit) | **v2 (kit + กำลังกู้)** |
+|---|---|---|---|
+| C | 1 | 10 | 10 |
+| CV log loss / Brier ทั้งหมด | 0.4491 / 0.1471 | 0.4484 / 0.1469 | **0.4484 / 0.1469** |
+| หลัง plant (773 แถว, OOF) log loss / Brier | 0.3418 / 0.1068 | 0.3358 / 0.1049 | **0.3358 / 0.1049** |
+| หลัง plant ช่วง 5–10s (14 แถว) | 0.5565 / 0.1894 | 0.2727 / 0.0842 | **0.2727 / 0.0842** |
+| reliability หลัง plant (C=1) 0.0–0.2 / 0.2–0.4 (pred/actual) | 0.098/0.049 · 0.303/0.203 | 0.095/0.018 · 0.303/0.230 | เท่า v2 (kit) |
+| `ct_can_defuse` std / raw | −0.714 / −1.99 | −1.967 / −5.46 | **−1.967 / −5.46** |
+| `bomb_planted` std / raw | 0.958 / 2.64 | 2.216 / 6.11 | **2.216 / 6.11** |
+| sanity 2v2 planted 12s / 8s / 3s | 59.0 / 91.0 / 90.5% | 58.8 / 99.7 / 99.7% | 58.8 / 99.7 / 99.7% |
+| sanity 8s CT มีคีม / 3s กำลังกู้ | – | – | **57.7% / 56.2%** |
+| round-start FACEIT 8020514f T / CT (≈61 / ≈55) | 62.3 / 54.4% | 62.2 / 54.4% | 62.2 / 54.4% |
+| FACEIT 8020514f Pearson All / T / CT | 0.907 / 0.925 / 0.915 | 0.909 / 0.924 / 0.915 | **0.909 / 0.924 / 0.915** |
+| FACEIT 8020514f MAE All / T / CT | 2.32 / 3.11 / 2.37 | 2.32 / 3.08 / 2.41 | **2.32 / 3.08 / 2.41** |
+| FACEIT 4cb4009a Pearson All / T / CT | 0.973 / 0.975 / 0.949 | 0.951 / 0.943 / 0.894 | **0.977 / 0.943 / 0.967** |
+| FACEIT 4cb4009a MAE All / T / CT | 0.85 / 2.03 / 1.84 | 1.13 / 2.31 / 2.26 | **0.78 / 2.31 / 1.86** |
+| 4cb4009a r2 wp_pre ก่อน defuse (กู้เสร็จตอนเหลือ 3.3s, เริ่มตอน 13.3s ไม่มีคีม) | 0.438 | 0.960 | **0.093** |
+| ↳ เครดิต defuse ของคนกู้ / แถว time ฝั่ง CT ก่อน defuse | +0.438 / −0.333 | +0.960 / −0.858 | **+0.093 / +0.009** |
+| validate-all · invariant (a)–(c) 5 แมตช์ | ผ่าน | ผ่าน | **ผ่าน** |
+
+- Impact ต่อผู้เล่นเปลี่ยนจาก v1 สูงสุด (pp/รอบ): inferno 0.06 · mirage 0.05 · dust2 0.04 · FACEIT 8020514f 0.23 · 4cb4009a 1.07
+- set E (= D + `ct_has_kit` เป็น feature, เทียบใน CV เท่านั้น): log loss 0.4475 ดีกว่า D 0.0009 (< std ระหว่าง fold ~0.01) และช่วง 5–10s แย่กว่าเล็กน้อย → ยังใช้ D
+- ผลกระทบตอนวัดก่อนแก้: train 30 แมตช์ state ที่ WP เปลี่ยนเพราะคีม 18/6,272 (17 รอบ, Σ|ΔWP| เปลี่ยน 1.26%); validation 3 pair ของ Leetify ไม่มี state ที่ CT รอดในช่วง 5–10s
 
 ### 2.3 ข้อมูล
 - `data/train_demos/` (gitignored) + `data/train_demos/manifest.csv` (file, map, source=`faceit|premier|pro`, level, date)
@@ -78,7 +117,7 @@ Rating รวม (แบบ 1.70 ของ FACEIT) ยังไม่ทำ จ�
 
 ### 3.1 ΔWP ของ event (แยกส่วนเวลาออก, owner 2026-11-05)
 ใช้แถวของ `build_wp_states(p)` เป็นลำดับ state ของรอบ: freeze_end → e1 … en → round_end; `wp_start` = WP ของ freeze_end
-- `wp_pre(e)` = WP ของ state ก่อนหน้า แต่เลื่อนนาฬิกาไปที่ tick ของ e (`time_left_s` ก่อนหน้า − Δtick/tickrate; `ct_can_defuse` คิดใหม่จากเวลา) · `equip_diff_k` ใช้ของ state ก่อนหน้า · state ก่อนหน้าที่ตัดสินแล้วใช้ rule-fixed
+- `wp_pre(e)` = WP ของ state ก่อนหน้า แต่เลื่อนนาฬิกาไปที่ tick ของ e (`time_left_s` ก่อนหน้า − Δtick/tickrate; `ct_can_defuse` คิดใหม่จากเวลา) · `equip_diff_k` และ `ct_has_kit` ใช้ของ state ก่อนหน้า (คนถือคีมอาจตายใน e) · `ct_defusing` ใช้ `ct_defusing_pre` ของแถว e เอง (defuse ที่เริ่มหลัง state ก่อนหน้า, §2.2.2) · state ก่อนหน้าที่ตัดสินแล้วใช้ rule-fixed
 - `delta_time = wp_pre(e) − wp_after(e ก่อนหน้า)` → แถว part/category `time`: default `time_credit: survivors` = คนที่รอดก่อน e ของแต่ละฝั่งแบ่งเท่ากัน (T +Dt / CT −Dt; ไม่มีคนรอด → ทั้งทีม) · `none` = steam_id null ไม่ให้ใคร (§3.7)
 - `delta_event = wp_after(e) − wp_pre(e)` → แบ่งตาม §3.2
 - round end: `delta = outcome − wp_after(event สุดท้าย)` (ไม่มีส่วนเวลาแยก)
@@ -118,7 +157,7 @@ part อื่น: damage ของเพื่อน (ไม่ใช่ attack
 - คะแนนการ save ปืน (ผลต่อ WP รอบถัดไป) → v2
 - HP ใน features → v2
 - damage ที่ไม่จบด้วย kill ไม่มีเครดิตตัวเอง (ได้ผ่าน damage share ตอนเหยื่อตายเท่านั้น)
-- ข้อมูล defuse kit ใน wp_states (ตอนนี้ `ct_can_defuse` ใช้ ≥ 10s)
+- state ตอนเริ่มกู้ (เครดิตของการเริ่มกู้ไปอยู่ในแถว `time`, §3.8)
 
 ### 3.4 Output
 - `rating_events` (data-model §2.4) → `data/parsed/<demo>/rating_events.parquet`: 1 แถวต่อ (state, part, ผู้รับ) คอลัมน์ `match_id, round_no, seq, sub, tick, event_type, event_ref, part, steam_id (nullable), is_bot, side, category, delta, wp_pre, wp_after`
@@ -167,7 +206,9 @@ part อื่น: damage ของเพื่อน (ไม่ใช่ attack
 
 ### 3.8 Known issues (ค้าง)
 - **WP mirage ต่างจาก FACEIT ~11 pp ต่อรอบฝั่ง T** (mirage-4cb4009a: ผลรวมทีม 1 ฝั่ง T ours +6.0 vs FACEIT −3.1, ฝั่ง CT +3.7 vs +13.6, ทั้งที่ All ตรง) → WP เริ่มรอบของเราให้ T บน mirage ต่ำกว่า FACEIT · รอ demo mirage เพิ่ม (ตอนนี้ 6 แมตช์ train)
-- `ct_has_kit` ยังไม่มีใน wp_states (`ct_can_defuse` ใช้ ≥ 10s)
+- **เครดิตตอนเริ่มกู้** (v2, §2.2.2): ไม่มี state ที่ begindefuse → WP ที่ลดลงตอนเริ่มกู้ไปอยู่ในแถว `time` ของ event ถัดไป แบ่งให้ CT ที่รอดทุกคน (`time_credit: survivors`) ไม่ใช่คนกู้คนเดียว · แก้ได้ด้วย state `begin_defuse` ถ้าต้องการ
+- **4cb4009a ฝั่ง T Pearson 0.975 → 0.943** ตั้งแต่ใส่ kit (v1 → v2) ทั้งที่ CT / All ดีขึ้น · แมตช์นี้อยู่ใน train · ดูอีกครั้งเมื่อมีแมตช์ FACEIT ที่ 3
+- **`ct_has_kit` เป็น feature (set E)** ดีกว่า D ไม่เกิน noise ที่ 30 แมตช์ → ลองใหม่ตอนมี 100 แมตช์
 - damage share 0.30 / ราคา death ยังไม่ปรับ (ส่วนต่างหลักกับ FACEIT, §3.6) รอข้อมูลเพิ่ม
 
 ## 4. RWS
@@ -214,3 +255,4 @@ part อื่น: damage ของเพื่อน (ไม่ใช่ attack
 4. Training + รายงาน §2.4 ✅ (2026-11-05, §2.2.1)
 5. Credit assignment + `rating_events` + metric `impact` + invariant tests ✅ (2026-11-05, §3.5)
 6. เทียบกับ FACEIT Swing / Leetify, ปรับ config, อัปเดต roadmap ✅ (2026-11-05, §3.6–3.7) → **Phase 2 ปิด**
+7. WP v2: `ct_has_kit` + defuse ที่กำลังกู้ใน wp_states → `wp_model_v2.json` ✅ (2026-11-06, §2.2.2)

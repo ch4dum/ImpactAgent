@@ -64,7 +64,10 @@
 
 **งานค้างของ Phase 2** (ไม่ block Phase 3):
 - [ ] RWS → `exact`: mirage-4cb4009a ต่าง ≤ 0.16 (CT team b 10/30), ไม่มีกฎที่ได้ 30/30 ทั้ง 2 แมตช์ (impact-spec §4) รอแมตช์ FACEIT ที่ 3
-- [ ] `ct_has_kit` ใน wp_states (ตอนนี้ `ct_can_defuse` ใช้ ≥ 10s)
+- [x] **WP model v2: defuse kit + defuse ที่กำลังกู้** (impact-spec §2.2.2, 2026-11-06): wp_states เพิ่ม `ct_has_kit`, `ct_defusing`, `ct_defusing_pre` (ไม่เพิ่ม state) · `ct_can_defuse` = เวลาพอตามคีม (5s / 10s) หรือกำลังกู้ทันเวลา · `wp_model_v2.json` = ตัวที่ใช้ (v1 เก็บไว้) · CV หลัง plant log loss 0.342 → 0.336, ช่วง 5–10s 0.557 → 0.273 · 4cb4009a r2 wp_pre ก่อน defuse 0.438 → 0.093 · FACEIT 4cb4009a CT Pearson 0.949 → 0.967 · validate-all + invariant 5 แมตช์ผ่าน
+- [ ] เครดิตตอนเริ่มกู้ไปอยู่แถว `time` แบ่ง CT ที่รอดทุกคน (ไม่มี state `begin_defuse`, impact-spec §3.8)
+- [ ] 4cb4009a ฝั่ง T Pearson 0.975 → 0.943 ตั้งแต่ใส่ kit: ดูอีกครั้งเมื่อมีแมตช์ FACEIT ที่ 3
+- [ ] `ct_has_kit` เป็น feature (set E, ดีกว่า D ไม่เกิน noise): ลองใหม่ตอนมี 100 แมตช์
 - [ ] WP mirage ต่าง FACEIT ~11 pp/รอบ ฝั่ง T (impact-spec §3.8) รอ demo mirage เพิ่ม
 - [ ] เก็บ demo train ถึง 100 แมตช์ (ตอนนี้ 30) แล้ว train WP ใหม่ + ทบทวน damage share / ราคา death
 - [ ] (เลื่อน) Aim / Utility / Positioning Score: แยกตามกลุ่มปืน (sniper / rifle / pistol) ไม่ให้ metric ที่เป็น n/a ดันคะแนน และบอกความมั่นใจตามขนาดตัวอย่าง (บทเรียนจาก Aim 100 ของ Leetify ในแมตช์ที่ใช้ AWP)
@@ -133,7 +136,9 @@
 | WP equip_diff_k | (Σ `current_equip_value` T − CT ของผู้เล่นที่ยังรอด)/1000 ณ state tick นับ "รอด" จาก kills; อ่าน tick data เฉพาะ tick ที่เป็น state ไม่เก็บทั้งเกม (2026-11-05) |
 | `parse_demo(fast=)` | `fast=True` ข้าม trade_windows + aim/visibility (ตาราง event เหมือนเดิมทุกกรณี); default `False` (2026-11-05) |
 | match fingerprint | map + จำนวนรอบ + สกอร์ (T−CT) + ชุด steam_id; ใช้ตัด validation match ออกจาก train (2026-11-05) |
-| WP feature set | ชุด D แม้ CV log loss แพ้ชุด A 0.002 (< std ระหว่าง fold): A ให้ `time_left_post` ผิดทิศ; `ct_can_defuse` ใช้เกณฑ์ ≥ 10s เพราะ wp_states ยังไม่มีข้อมูล kit (2026-11-05) |
+| WP feature set | ชุด D แม้ CV log loss แพ้ชุด A 0.002 (< std ระหว่าง fold): A ให้ `time_left_post` ผิดทิศ; v1 `ct_can_defuse` ใช้เกณฑ์ ≥ 10s เพราะ wp_states ยังไม่มีข้อมูล kit (2026-11-05) |
+| WP model v2 | `wp_model_v2.json` = ตัวที่ใช้ (v1 เก็บไว้ไม่เขียนทับ) · ชุด D เดิม แต่ `ct_can_defuse` = เวลาพอ (5s มีคีม / 10s ไม่มี) **หรือ** มี defuse ที่กำลังกู้ทันเวลา · set E (`ct_has_kit` เป็น feature) ไม่ใช้เพราะดีกว่าไม่เกิน noise (owner, 2026-11-06) |
+| Defuse ที่กำลังกู้ | begindefuse ที่เริ่มตอนเวลาพอสำหรับคีมของคนกด + ยังไม่จบ (หมดเวลากู้ / defused / ตาย / กดใหม่ / abort) + คนกู้ยัง `is_defusing` ณ tick · CS2 ไม่ยิง `bomb_abortdefuse` จึงต้องใช้ `is_defusing` · เก็บเป็น flag ใน state เดิม (`ct_defusing`, `ct_defusing_pre`) ไม่เพิ่ม state เพื่อไม่ต้องแก้ credit / invariant (2026-11-06) |
 | WP training | weight = 1/แถว trainable ต่อรอบ, standardize feature, C จาก {0.01, 0.1, 1, 10}, แยก fold ตามแมตช์; แมตช์ FACEIT validation ใช้เช็ค round-start WP เท่านั้น ไม่ train (2026-11-05) |
 | Impact ΔWP | แยก `delta_time` (wp_pre(e) − wp_after(ก่อนหน้า), steam_id null) ออกจาก `delta_event` เพราะ `ct_can_defuse` ทำให้ WP กระโดดตามนาฬิกา C4; round end ไม่มีส่วนเวลา (owner, 2026-11-05) |
 | Impact damage share | damage แบบ sequential (`rws._sequential_enemy_damage`) ไม่ใช่ `dmg_effective` (owner, 2026-11-05) |

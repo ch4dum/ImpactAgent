@@ -39,7 +39,7 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 | `impactagent/parse/trades.py` | `trade_windows` (per death × alive teammate, features sampled inside the trade window) |
 | `impactagent/visibility/` | Visibility module: `SpottedBackend` (game) / `RaycastBackend` (awpy mesh, lag window, smoke spheres, FOV) behind one `sees()` interface; `report.py` = kill visibility report (`python -m impactagent visibility DEMO...`). Raycast needs `pip install -e .[visibility]` |
 | `docs/metrics/impact-spec.md` | Phase 2 spec: WP model, Impact credit, RWS, work order (§6) |
-| `impactagent/ratings/` | `wp_states.py` (WP training states), `train_wp.py` (CV + fit, sklearn only here), `wp_model.py` + `wp_model_v1.json` (predict, numpy only), `credit.py` + `credit.yaml` (Impact credit -> rating_events), `impact_report.py` (CLI `impact`) |
+| `impactagent/ratings/` | `wp_states.py` (WP training states), `train_wp.py` (CV + fit, sklearn only here), `wp_model.py` + `wp_model_v2.json` (predict, numpy only; **v2 is the live model**, `wp_model_v1.json` kept for reference), `credit.py` + `credit.yaml` (Impact credit -> rating_events), `impact_report.py` (CLI `impact`) |
 | `impactagent/__main__.py` | CLI: `inspect`, `parse`, `validate`, `validate-all`, `validate-faceit`, `visibility`, `wp-states`, `train-wp`, `impact` |
 | `impactagent/validate/known_exceptions.yaml` | Single cells with no known cause yet (status `known`, not gating) |
 | `impactagent/validate/__init__.py` | Compare our metrics with a truth JSON; aborts if demo and truth look like different matches |
@@ -49,7 +49,7 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 | `data/validation/dust2-f2633f5c.json` | Leetify values for a de_dust2 13:9 match. **No local demo matches it** (`dust2win.dem`, `dust139.dem`, `dust1614.dem` are other matches). Don't tune anything to it. Gitignored. |
 | `data/parsed/` | Parser outputs (Parquet). Gitignored. |
 
-## Current status (2026-11-05)
+## Current status (2026-11-06)
 Phase 0 (research), data model v0.1, Phase 1 (metrics) and **Phase 2 (ratings) are done**; **current: Phase 3 (backend)**. Full plan and checklist: `docs/roadmap.md`.
 
 - **CLI:** `inspect`, `parse`, `validate`, `validate-all`, `validate-faceit`, `visibility`, `wp-states`, `train-wp`, `impact`. `parse_demo` reads `.dem` / `.dem.bz2` / `.dem.gz` (`.dem.zst` with zstandard), caps the decompressed demo at 1 GiB and parses in a child process killed after 300 s (`MAX_DEMO_BYTES`, `PARSE_TIMEOUT_SECONDS` in `constants.py`).
@@ -61,8 +61,9 @@ Phase 0 (research), data model v0.1, Phase 1 (metrics) and **Phase 2 (ratings) a
 - **Phase 2 (ratings, done 2026-11-05, `docs/metrics/impact-spec.md`):**
   - RWS (`impactagent/metrics/rws.py`, sequential damage): FACEIT dust2-8020514f 30/30, mirage-4cb4009a off ≤ 0.16 (10/30, cause unknown) → still `calibrating`. `validate-faceit` matches players by name / truth `"aliases"` / elimination and fails on any unmatched name.
   - WP model v1: `wp-states` (30 train matches, 639 rounds) → `train-wp` (needs `.[train]`), standardized L2 logistic, feature set D, CV log loss 0.449 vs baseline 0.496; predict in `impactagent/ratings/wp_model.py` (numpy only).
+  - **WP model v2 (2026-11-06, live, impact-spec §2.2.2):** wp_states adds `ct_has_kit`, `ct_defusing`, `ct_defusing_pre` (no new states); `ct_can_defuse` = enough C4 time for the kit (5 s / 10 s) or a defuse in progress that will finish (begun in time + not ended + defuser still `is_defusing`; CS2 never fires `bomb_abortdefuse`). CV log loss 0.448, post-plant 0.336 (v1 0.342); FACEIT 4cb4009a CT Pearson 0.967 (v1 0.949). v1 JSON kept, never overwrite it.
   - Impact (`impactagent/ratings/credit.py`, `python -m impactagent impact DEMO [--faceit JSON --breakdown --time-credit none|survivors]`): `rating_events` + custom metric `impact` (pp per round); default `time_credit: survivors`; invariants pass on 5 matches; vs FACEIT Swing (20 players) Pearson 0.93, vs Leetify rating 0.89-0.99.
-  - Open (not blocking): RWS exact, `ct_has_kit` in wp_states, WP mirage ~11 pp/round T bias vs FACEIT, train demos to 100.
+  - Open (not blocking): RWS exact, WP mirage ~11 pp/round T bias vs FACEIT, train demos to 100, defuse-start credit lands in `time` rows (shared by all surviving CTs), 4cb4009a T Pearson 0.975 → 0.943 since v2 (recheck with a 3rd FACEIT match), retry `ct_has_kit` as a feature (set E) at 100 matches.
 - **Branches:** v2 became `main` and the old `main` became `v1-draft` (2026-11-05); main's history was rewritten the same day.
 
 Validate (run after every metric/parser change; all pairs and the registry must stay green):
