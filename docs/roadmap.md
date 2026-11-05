@@ -19,8 +19,11 @@
 - [ ] Trade opportunities / attempts: ตอนนี้เป็นสมมติฐาน (ตรง ~60%) → calibrate ใหม่หลังมี visibility
 - [x] Metric registry (`impactagent/metrics/registry.yaml`): 43 metric (39 exact, 4 calibrating); `validate-all` เช็คว่า registry ครบ/ถูก format และ calibrating ไม่ gate
 - [ ] Head Accuracy (ไม่ต้องใช้ visibility)
-- [ ] Engagements + visibility v0 (`spotted`) → Aim: spotted accuracy, TTD, crosshair, counter-strafe, spray, TTK, first bullet
-- [ ] Visibility v1 (raycast กับ map geometry) ทำเฉพาะถ้า v0 คลาดจาก Leetify มาก
+- [ ] Engagements + visibility (raycast) → Aim: spotted accuracy, TTD, crosshair, counter-strafe, spray, TTK, first bullet
+- [x] **Visibility module** (`impactagent/visibility/`, 2026-11-05): interface เดียว backend `spotted` (ของเกม) / `raycast` (awpy mesh) + lag window 7 tick + ควันทรงกลม + FOV 50°; `python -m impactagent visibility DEMO...` รายงานผล
+  - kill ปกติที่ "เห็น" (raycast เต็ม): inferno 72/72, mirage 150/152; ผ่านควัน: 0/7, 2/7; `spotted` ของเกมเห็นแค่ ~75% ของ kill ปกติ
+  - ความเร็ว: raycast ~29k คู่-tick/วินาที (inferno ทุกคู่ศัตรูทุก 4 tick = 248k คู่ ใน 8.5s + อ่าน tick 5.3s)
+- [x] Visibility v1 (raycast กับ map geometry)
   - [x] Spike awpy 3.1.1 `VisibilityChecker` (`scripts/visibility_spike.py`, ยังไม่เข้า metrics): kill ปกติ "เห็น" 95.8% (inferno 69/72) / 95.4% (mirage 145/152), penetrated เห็นแค่ 1/2 และ 1/8, ~3-4 µs ต่อ ray, mesh โหลด < 0.1s
   - [x] Kill ที่ "ไม่เห็น" (~4-5%) มาจาก lag compensation: ย้อนตำแหน่งคนตาย 2-7 tick แล้วเห็นครบ 72/72 และ 152/152; ไม่มีจุดชน mesh ใกล้ตัว < 16 unit (ไม่ใช่ player clip); eye height ใช้ `m_flDuckViewOffset` (demo ไม่มี `m_vecViewOffset`); ย้อนแล้ว penetrated "เห็น" เพิ่มจาก 1/8 เป็น 2/8 บน mirage
 - [ ] Round buy type (pistol / eco / semi-eco / force / full) + Map Zones (`last_place_name`)
@@ -65,7 +68,9 @@
 | ชื่อ product | ยังไม่ตัดสินใจ (ห้ามมี CS2 / Counter-Strike) |
 | LLM | Gemini API free tier + export ให้ user ใช้ AI ของตัวเอง |
 | Buy type thresholds | ยังไม่ตัดสินใจ (Leetify ไม่เปิดเผย) |
-| Visibility | เริ่มที่ `spotted` แล้วค่อยดูว่าต้อง raycast ไหม (`approximate_spotted_by` ให้ trade opportunity ตรงแค่ ~60%) |
+| Visibility | **raycast เป็นค่าหลัก** `spotted` ยังสลับใช้ได้ (`spotted` เห็น kill ปกติแค่ ~75%) (2026-11-05) |
+| Lag compensation | **window คงที่ 7 tick** (เป้าหมายตำแหน่งใดก็ได้ใน 7 tick ล่าสุด) ไม่ย้อนตาม ping: tick ที่ต้องย้อนไม่สัมพันธ์กับ ping ของคนยิง (rank corr 0.01, 64 hit, ping 13–57ms) (2026-11-05) |
+| Smoke | ทรงกลม R 144, ศูนย์กลาง +32 จากจุดระเบิด, บล็อกตั้งแต่ระเบิด +0.5s ถึง `smokegrenade_expired`; calibrate บน inferno (2026-11-05) |
 | Trade window | 4.0s (ช่วงที่ข้อมูลยอมรับ [3.48, 4.47) s) |
 | validate gating | gate core metric + opening duels + clutches; metric ที่ registry ตั้ง `status: calibrating` (ตอนนี้ trade opp/att) รายงานแต่ไม่ fail |
 | Map geometry | awpy-data `.mesh` (`pip install -e .[visibility]`, cache `~/.awpy/<ClientVersion>`, ไม่ commit) เลือก release ตาม `csgo_v<build>` ใน header ของ demo (2026-11-05) |

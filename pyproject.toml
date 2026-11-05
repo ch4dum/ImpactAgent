@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Visibility spike (scripts/visibility_spike.py). awpy 3.1 needs polars>=2 (demoparser2 0.42 works with it).
+# Raycast visibility backend (impactagent/visibility). awpy 3.1 needs polars>=2 (demoparser2 0.42 works with it).
 visibility = ["awpy>=3.1.1"]
 
 [tool.setuptools.packages.find]

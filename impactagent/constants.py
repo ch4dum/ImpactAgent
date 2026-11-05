@@ -61,3 +61,27 @@ PARSE_TIMEOUT_SECONDS = 300
 # Trade attempt = damaged the killer, or fired while the killer was spotted and the crosshair
 # was within this angle of him. HYPOTHESIS (best of a grid search on 2 matches, spec §3).
 TRADE_ATTEMPT_AIM_DEG = 20.0
+
+# ---- visibility (impactagent/visibility, spec §0)
+# Eye z = origin z + EYE_HEIGHT_STANDING + m_flDuckViewOffset (0 standing .. -18 crouched).
+# The demo does not network m_vecViewOffset, so only the 64 standing base is a constant.
+EYE_HEIGHT_STANDING = 64.0
+# Target points on the other player: head (= his eye height), chest, feet. Any clear ray = seen.
+TARGET_CHEST_FRACTION = 0.72  # chest z as a fraction of eye height
+TARGET_FEET_OFFSET = 8.0  # above origin, so the ray does not graze the floor
+# Lag compensation: the target counts as seen if his position at any of the last N ticks is
+# in sight. The needed rewind does NOT follow the observer's ping (rank corr 0.01 on 64 hits
+# in 2 matches), so a fixed window is used. 7 = largest rewind the 224 normal kills needed.
+LAG_COMP_WINDOW_TICKS = 7
+# Field of view: max angle (deg) between the view direction and a target point. Half-angle:
+# CS2 at 16:9 is ~53 deg horizontally, 4:3 is 45.
+VISIBILITY_FOV_DEG = 50.0
+# Smoke = sphere at the smokegrenade_detonate position + z offset, blocking from detonate + bloom
+# until smokegrenade_expired (or detonate + duration if the round ends first). Grid search on
+# inferno (R 96-160, z 0-64, bloom 0-1.5 s): 144 / 32 / 0.5 keeps 72/72 normal kills seen and
+# blocks 7/7 through-smoke kills; mirage holdout 150/152 and 5/7. Bloom 0 blocks kills just
+# after the pop (smoke not grown yet).
+SMOKE_RADIUS = 144.0
+SMOKE_CENTER_Z_OFFSET = 32.0
+SMOKE_BLOOM_SECONDS = 0.5
+SMOKE_DURATION_SECONDS = 22.0625  # detonate -> expired, same for all 28 paired smokes in inferno

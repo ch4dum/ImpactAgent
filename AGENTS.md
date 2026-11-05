@@ -31,8 +31,8 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 | `impactagent/metrics/compute.py` | Metrics per player (general, utility, trades, clutches), `compute_match_metrics(parsed)` |
 | `impactagent/metrics/registry.yaml` | **Metric registry**: one entry per finished metric (data-model §4), `status: exact` / `calibrating`. Add a metric here when it is done; validate reads `calibrating` from it |
 | `impactagent/parse/trades.py` | `trade_windows` (per death × alive teammate, features sampled inside the trade window) |
-| `scripts/visibility_spike.py` | Spike (not in the package): kill line-of-sight with awpy `VisibilityChecker`; needs `pip install -e .[visibility]` |
-| `impactagent/__main__.py` | CLI: `inspect`, `parse`, `validate` |
+| `impactagent/visibility/` | Visibility module: `SpottedBackend` (game) / `RaycastBackend` (awpy mesh, lag window, smoke spheres, FOV) behind one `sees()` interface; `report.py` = kill visibility report (`python -m impactagent visibility DEMO...`). Raycast needs `pip install -e .[visibility]` |
+| `impactagent/__main__.py` | CLI: `inspect`, `parse`, `validate`, `validate-all`, `visibility` |
 | `impactagent/validate/__init__.py` | Compare our metrics with a truth JSON; aborts if demo and truth look like different matches |
 | `data/validation/inferno-44a522c3.json` | **Validation pair 1 (calibration):** Leetify's real values for `scripts/demos/003852158461294936246_0991785667.dem.bz2` (de_inferno 13:0, 13 rounds; utility only for our team; read its `note`). **Gitignored, never commit.** |
 | `data/validation/mirage-65db631a.json` | **Validation pair 2 (holdout):** `scripts/demos/003850878442929127864_1489073941.dem.bz2` (de_mirage 13:11, 24 rounds; utility for both teams, some nulls; players may carry `aliases`). Gitignored. |
@@ -42,8 +42,9 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 ## Current status (2026-11-05)
 Phase 0 (research) and data model v0.1 are done. Full plan and checklist: `docs/roadmap.md`.
 
-- **CLI:** `inspect`, `parse`, `validate`, `validate-all`. `parse_demo` reads `.dem` / `.dem.bz2` / `.dem.gz` (`.dem.zst` with zstandard), caps the decompressed demo at 1 GiB and parses in a child process killed after 300 s (`MAX_DEMO_BYTES`, `PARSE_TIMEOUT_SECONDS` in `constants.py`).
+- **CLI:** `inspect`, `parse`, `validate`, `validate-all`, `visibility`. `parse_demo` reads `.dem` / `.dem.bz2` / `.dem.gz` (`.dem.zst` with zstandard), caps the decompressed demo at 1 GiB and parses in a child process killed after 300 s (`MAX_DEMO_BYTES`, `PARSE_TIMEOUT_SECONDS` in `constants.py`).
 - **Metrics vs Leetify:** core (General + Utility + trade succeeded + opening traded %) **inferno 275/275, mirage 320/320** (player × metric); opening duels 37/37 rounds; clutches 43/43 (incl. disconnect deaths). Trade opportunity / attempt are hypotheses (~60% exact), `calibrating`, not gating. Rule-by-rule evidence (2 matches / 1 match / hypothesis): `docs/metrics/leetify-metrics-spec.md` §8.
+- **Visibility:** `impactagent/visibility/` (raycast default, spotted switchable): normal kills seen inferno 72/72, mirage 150/152; lag window fixed 7 ticks (ping does not explain the rewind); smoke spheres R 144 / +32z / 0.5 s bloom; FOV 50°. Spec §0 + §8.
 - **Metric registry:** `impactagent/metrics/registry.yaml`, 43 metrics (39 exact, 4 calibrating). Every finished metric gets an entry; `validate-all` checks it and reads `calibrating` from it.
 - **Branches:** v2 became `main` and the old `main` became `v1-draft` (2026-11-05); main's history was rewritten the same day.
 
@@ -54,7 +55,7 @@ python -m impactagent validate-all
 
 ### Next steps (Phase 1 in `docs/roadmap.md`)
 1. Head Accuracy (no visibility needed).
-2. Engagements + visibility v0 (`spotted`) → Aim metrics (spotted accuracy, TTD, crosshair placement, counter-strafe, spray, TTK, first bullet). Then re-calibrate trade opportunity / attempt with that visibility.
+2. Engagements on the visibility module (raycast) → Aim metrics (spotted accuracy, TTD, crosshair placement, counter-strafe, spray, TTK, first bullet). Then re-calibrate trade opportunity / attempt with that visibility.
 3. Round buy type + Map Zones.
 4. Hypotheses in spec §8 (🟡) need a match that separates them, e.g. a kill during a ≤ 1.1s blind, capped molotov / team-HE hits. A new truth file is a holdout: run `validate-all` before changing code.
 

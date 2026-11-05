@@ -25,7 +25,14 @@ Leetify **ไม่ใช้** radar spotted ของเกม (ช้าได
 | A. ใช้ `spotted` / `m_bSpottedByMask` จาก demoparser2 | ต่ำ (ปัญหาเดียวกับที่ Leetify เลิกใช้) | ง่าย |
 | B. FOV check + raycast กับ collision mesh ของแมพ (เช่น `.tri` จาก vphys, แนวเดียวกับ awpy visibility) | สูง | ต้อง extract geometry ทุกแมพ + raycast ทุก tick ที่สนใจ |
 
-→ **แผน:** เริ่มด้วย A เพื่อให้ pipeline เดินก่อน แล้วสลับเป็น B ทีหลัง โดยออกแบบให้ `visibility` เป็น module ที่ถอดเปลี่ยนได้
+→ **ทำแล้ว (2026-11-05):** `impactagent/visibility/` มีทั้ง A (`spotted`) และ B (`raycast`: awpy-data mesh + lag window + ควัน + FOV) สลับได้ ใช้ B เป็นค่าหลัก. ผลกับ kill (`python -m impactagent visibility`):
+
+  | backend | kill ปกติ inferno / mirage | ผ่านควัน | wallbang |
+  |---|---|---|---|
+  | `spotted` ของเกม | 75.0% / 74.3% | 0/7, 1/7 | 2/2, 2/8 |
+  | raycast LOS (tick เดียว) | 95.8% / 95.4% | 7/7, 5/7 | 1/2, 1/8 |
+  | + lag window 7 tick | 100% / 99.3% | 7/7, 7/7 | 1/2, 2/8 |
+  | + ควัน + FOV 50° (ค่าหลัก) | 100% / 98.7% | 0/7, 2/7 | 1/2, 2/8 |
 
 > ⚠️ ของเดิมบน `v1-draft` คิด preaim เป็นมุมระหว่างเป้ากับ **หัวศัตรู** ซึ่งไม่ใช่นิยามของ Leetify (ดูข้อ 1.4)
 
@@ -200,4 +207,8 @@ kills, deaths, assists, HS kills, K/D, damage, ADR (`dpr`), KAST, rounds survive
 | Clutch เริ่มเมื่อ death ทำให้เหลือคนเดียวในฝั่ง และศัตรูเหลือ ≥ 1; vs = ศัตรูที่เหลือ; นับทุก death (TK / suicide / world / ออกเกม) ยกเว้น post-match | 43/43 | ✅ |
 | Clutch kills = kill ศัตรูหลังเริ่ม clutch จนจบรอบ **+ death แบบ world/suicide ของศัตรู (เช่นออกเกม) ที่เราเป็น assister** นับรวม post-match | 43/43; ส่วน "+ assister" มีหลักฐาน 1 เคส (inferno r13: Wagga ออกเกมหลังจบแมตช์ assister = Suzy) | ✅ / 🟢 |
 | Clutch outcome: won = ฝั่งชนะ, lost = ตายในรอบ, saved = แพ้แต่รอด. **ตายเพราะออกเกม (`by_disconnect`) ไม่นับว่าตาย** | 43/43; ส่วน "ออกเกม" มีหลักฐาน 1 เคส (inferno r13 Suzy) | ✅ / 🟢 |
+| Visibility: ตา = Z + 64 + `m_flDuckViewOffset` | demo ไม่มี `m_vecViewOffset`; kill ปกติเห็น 72/72, 150/152 | ✅ |
+| Visibility: lag window คงที่ 7 tick (ไม่ใช้ ping) | rewind ที่ต้องใช้ไม่สัมพันธ์กับ `ping` ของคนยิง (rank corr 0.01, 64 hit 2 แมตช์); kill ปกติต้องย้อนสูงสุด 6 tick | ✅ |
+| Visibility: ควัน = ทรงกลม R 144 / +32z / บล็อกหลังระเบิด 0.5s ถึง expired | inferno (calibrate): ปกติ 72/72 ไม่โดนบล็อก, ผ่านควัน 7/7 โดนบล็อก; mirage (holdout): 150/152, 5/7. HE เจาะควันยังไม่ทำ | 🟢 |
+| Visibility: FOV 50° (half-angle) | kill: มุมจากเป้าถึงจุดที่ใกล้สุด p95 5.8°, max 24.3° จึงไม่ตัด kill; ค่าเป๊ะยังไม่มีเคสพิสูจน์ | 🟡 |
 | **Death จากการออกเกม** (`kills.by_disconnect`): suicide/world ที่ tick เดียวกับ `player_disconnect` ของคนตาย (±1 tick). เจอ 5 ครั้งใน 2 แมตช์ (Suzy ระหว่างแมตช์, ที่เหลือหลังจบแมตช์). **General ยังนับเป็น death** (Leetify: Suzy deaths 13) และ KAST ไม่เปลี่ยน; ใช้แค่ clutch outcome. J ใน mirage หลุดกลางเกม 2 ครั้งแต่ไม่มี death เกิดขึ้น | 5 เคส | ✅ ตรวจจับ / 🟢 ผลต่อ clutch |

@@ -8,6 +8,7 @@ from __future__ import annotations
 import gc
 import hashlib
 import os
+import re
 import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -26,6 +27,7 @@ from impactagent.constants import (
     TRADE_WINDOW_SECONDS,
 )
 from impactagent.parse.trades import build_trade_windows
+from impactagent.visibility.smoke import SMOKE_COLUMNS, pair_smokes
 
 POS_PROPS = ["team_num", "last_place_name", "X", "Y", "Z"]
 
@@ -47,6 +49,8 @@ class ParsedDemo:
     bomb: pd.DataFrame
     death_inventory: pd.DataFrame
     trade_windows: pd.DataFrame = field(default_factory=pd.DataFrame)
+    smokes: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=SMOKE_COLUMNS))
+    client_build: int | None = None  # csgo_v<build> from the header: picks the map mesh release
     warnings: list[str] = field(default_factory=list)
 
     def tables(self) -> dict[str, pd.DataFrame]:
@@ -62,6 +66,7 @@ class ParsedDemo:
             "bomb": self.bomb,
             "death_inventory": self.death_inventory,
             "trade_windows": self.trade_windows,
+            "smokes": self.smokes,
         }
 
 
@@ -348,6 +353,8 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
     parser = DemoParser(str(dem_path))
     header = parser.parse_header() or {}
     map_name = header.get("map_name", "unknown")
+    m = re.search(r"csgo_v(\d+)", header.get("game_directory", "") or "")
+    client_build = int(m.group(1)) if m else None
     tickrate = DEFAULT_TICKRATE
 
     rounds = _build_rounds(parser, tickrate, warnings)
@@ -490,6 +497,19 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
         )
     detonations = pd.concat(det_frames, ignore_index=True) if det_frames else pd.DataFrame()
 
+    # ---- smokes (visibility): detonate .. expired
+    sd, se = _event(parser, "smokegrenade_detonate"), _event(parser, "smokegrenade_expired")
+    smokes = pd.DataFrame(columns=SMOKE_COLUMNS)
+    if not sd.empty:
+        sd = _assign_round(sd, rounds)
+        sdet = pd.DataFrame({
+            "round_no": sd["round_no"], "entity_id": sd["entityid"],
+            "thrower_id": _sid(sd["user_steamid"]) if "user_steamid" in sd else None,
+            "detonate_tick": sd["tick"], "x": sd["x"], "y": sd["y"], "z": sd["z"],
+        })
+        sexp = pd.DataFrame({"entity_id": se["entityid"], "tick": se["tick"]}) if not se.empty else pd.DataFrame()
+        smokes = pair_smokes(sdet, sexp, tickrate)
+
     # ---- blinds
     b = _event(parser, "player_blind", ["team_num"])
     b = _assign_round(b, rounds)
@@ -562,5 +582,7 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
         bomb=bomb,
         death_inventory=death_inventory,
         trade_windows=trade_windows,
+        smokes=smokes,
+        client_build=client_build,
         warnings=warnings,
     )

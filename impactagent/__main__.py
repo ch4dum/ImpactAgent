@@ -1,4 +1,4 @@
-"""CLI: python -m impactagent {inspect,parse,validate} <demo>."""
+"""CLI: python -m impactagent {inspect,parse,validate,validate-all,visibility} <demo>."""
 
 from __future__ import annotations
 
@@ -86,6 +86,12 @@ def _cmd_validate_all(args: argparse.Namespace) -> int:
     return validate_all(args.dir, metrics=args.metrics)
 
 
+def _cmd_visibility(args: argparse.Namespace) -> int:
+    from impactagent.visibility.report import run
+
+    return run(args.demos)
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):  # Windows consoles + non-ASCII player names
         try:
@@ -121,6 +127,10 @@ def main(argv: list[str] | None = None) -> int:
     va.add_argument("--dir", default="data/validation")
     va.add_argument("--metrics", nargs="*", help="only these metrics")
     va.set_defaults(func=_cmd_validate_all)
+
+    vis = sub.add_parser("visibility", help="kill visibility report per backend (needs .[visibility])")
+    vis.add_argument("demos", nargs="+", type=Path)
+    vis.set_defaults(func=_cmd_visibility)
 
     args = ap.parse_args(argv)
     return args.func(args)

@@ -76,6 +76,8 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash
 
 **`grenades`**: match_id, round_no, entity_id, thrower_id, type (`flash`/`smoke`/`he`/`molotov`/`incendiary`/`decoy`), throw_tick, detonate_tick, detonate_xyz, detonate_place
 
+**`smokes`** (visibility): match_id, round_no, entity_id, thrower_id, detonate_tick, expire_tick (`smokegrenade_expired` ตัวแรกของ entity เดียวกันหลังระเบิด ถ้าไม่มี = ระเบิด + 22.06s), x, y, z
+
 **`blinds`**: match_id, round_no, tick, grenade_entity_id, thrower_id, victim_id, duration, is_teammate
 
 **`bomb_events`**: match_id, round_no, tick, steam_id, type (`plant`/`defuse_start`/`defuse`/`explode`), site
@@ -229,8 +231,10 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash
 - `parse_version` บอกว่าแมตช์ไหนต้องคำนวณใหม่
 - **Parse safety:** .dem หลังแตก ≤ 1 GiB (หยุดแตกทันทีถ้าเกิน), parse ใน child process ที่ถูก kill เมื่อเกิน 300s; ไฟล์ temp ลบทุกกรณี (`impactagent/constants.py`)
 
-## 6. ยังไม่ตัดสินใจ
-- Visibility module: spotted mask ก่อน → raycast ทีหลัง (ดู `metrics/leetify-metrics-spec.md` ข้อ 0)
+## 6. Visibility
+`impactagent/visibility/`: `VisibilityBackend.sees(states, tick, observer, target)` สลับ backend ได้ (`spotted` / `raycast`). อ่าน state เฉพาะ tick ที่ query ต้องใช้ (`TickStates`) แล้วทิ้ง ไม่เก็บ tick data. Raycast: ตา = Z + 64 + `m_flDuckViewOffset` → หัว / อก / เท้าของเป้า, เป้าในตำแหน่งใดก็ได้ใน 7 tick ล่าสุด (lag), ไม่ผ่านควัน (`smokes`), อยู่ใน FOV 50° จากทิศที่มอง. เป้าที่ตายใน tick นั้นใช้ state ของ tick ก่อนหน้า. ค่าคงที่อยู่ใน `constants.py`
+
+## 7. ยังไม่ตัดสินใจ
 - Trade window: ช่วง [3.48, 4.47) s ใช้ 4.0 (spec §3); นิยาม trade opportunity / attempt รอ visibility
 - เกณฑ์ buy type (มูลค่าอุปกรณ์เท่าไหร่ = eco/force/full)
 - Postgres แบบ self-host หรือ Supabase
