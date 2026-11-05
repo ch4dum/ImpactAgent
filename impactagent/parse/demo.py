@@ -35,7 +35,7 @@ from impactagent.constants import (
     TRADE_WINDOW_SECONDS,
 )
 from impactagent.parse.aim import ENGAGEMENT_COLUMNS, build_aim_tables
-from impactagent.parse.trades import build_trade_windows
+from impactagent.parse.trades import COLUMNS as TRADE_COLUMNS, build_trade_windows
 from impactagent.visibility.smoke import SMOKE_COLUMNS, pair_smokes
 
 POS_PROPS = ["team_num", "last_place_name", "X", "Y", "Z"]
@@ -301,12 +301,15 @@ def parse_demo(
     path: str | Path,
     timeout: float | None = PARSE_TIMEOUT_SECONDS,
     max_bytes: int | None = MAX_DEMO_BYTES,
+    fast: bool = False,
 ) -> ParsedDemo:
     """Parse a .dem (or .dem.bz2 / .dem.gz / .dem.zst) into event tables.
 
     timeout: seconds; parsing runs in a child process that is killed when it runs over
       (raises ParseTimeoutError). None = parse in this process, no limit.
     max_bytes: max size of the (decompressed) .dem (raises DemoTooLargeError). None = no limit.
+    fast: skip the derived tables that need heavy tick sampling (trade_windows, aim/visibility).
+      Event tables are identical either way; only trade_windows / engagements are left empty.
     The temp .dem of a compressed demo is removed in every case.
     """
     path = Path(path)
@@ -314,24 +317,24 @@ def parse_demo(
         raise FileNotFoundError(path)
     with _demo_file(path, max_bytes) as (dem_path, sha256):
         if not timeout:
-            return _parse(dem_path, path, sha256)
-        return _parse_in_child(dem_path, path, sha256, timeout)
+            return _parse(dem_path, path, sha256, fast)
+        return _parse_in_child(dem_path, path, sha256, timeout, fast)
 
 
-def _child_main(dem_path: str, path: str, sha256: str, out: str) -> None:
+def _child_main(dem_path: str, path: str, sha256: str, out: str, fast: bool) -> None:
     """Child process entry point: parse, then pickle the result (or the error) to `out`."""
     import pickle
     import traceback
 
     try:
-        result = ("ok", _parse(Path(dem_path), Path(path), sha256))
+        result = ("ok", _parse(Path(dem_path), Path(path), sha256, fast))
     except BaseException as exc:  # noqa: BLE001 - report everything to the parent
         result = ("error", f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}")
     with open(out, "wb") as f:
         pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def _parse_in_child(dem_path: Path, path: Path, sha256: str, timeout: float) -> ParsedDemo:
+def _parse_in_child(dem_path: Path, path: Path, sha256: str, timeout: float, fast: bool) -> ParsedDemo:
     import multiprocessing as mp
     import pickle
 
@@ -339,7 +342,7 @@ def _parse_in_child(dem_path: Path, path: Path, sha256: str, timeout: float) -> 
     os.close(fd)
     out = Path(out_name)
     proc = mp.get_context("spawn").Process(
-        target=_child_main, args=(str(dem_path), str(path), sha256, str(out)), daemon=True
+        target=_child_main, args=(str(dem_path), str(path), sha256, str(out), fast), daemon=True
     )
     try:
         proc.start()
@@ -388,7 +391,22 @@ def _build_player_zones(kills: pd.DataFrame) -> pd.DataFrame:
     return pz.sort_values(["steam_id", "side", "zone"]).reset_index(drop=True)
 
 
-def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
+def _build_trade_and_aim(parser, kills, damages, shots, player_rounds_side, smokes,
+                         map_name, client_build, tickrate, warnings, fast: bool):
+    """-> (trade_windows, engagements, visibility_backend, shots). `fast` skips the heavy
+    tick sampling and leaves trade_windows / engagements empty."""
+    if fast:
+        return pd.DataFrame(columns=TRADE_COLUMNS), pd.DataFrame(columns=ENGAGEMENT_COLUMNS), "", shots
+    trade_windows = build_trade_windows(
+        parser, kills, damages, shots, player_rounds_side, tickrate, TRADE_WINDOW_SECONDS
+    )
+    shots, engagements, vis_backend = build_aim_tables(
+        parser, shots, damages, kills, player_rounds_side, smokes, map_name, client_build, tickrate, warnings
+    )
+    return trade_windows, engagements, vis_backend, shots
+
+
+def _parse(dem_path: Path, path: Path, sha256: str, fast: bool = False) -> ParsedDemo:
     warnings: list[str] = []
     parser = DemoParser(str(dem_path))
     header = parser.parse_header() or {}
@@ -477,7 +495,8 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
     disc = _event(parser, "player_disconnect")
     left = set()
     if not disc.empty and "user_steamid" in disc:
-        left = {(s, int(t) + dt) for s, t in zip(_sid(disc["user_steamid"]), disc["tick"]) if s for dt in (-1, 0, 1)}
+        left = {(s, int(t) + dt) for s, t in zip(_sid(disc["user_steamid"]), disc["tick"])
+                if pd.notna(s) and s for dt in (-1, 0, 1)}
     kills["by_disconnect"] = [
         bool(sui) and (v, int(t)) in left for v, t, sui in zip(kills["victim_id"], kills["tick"], kills["is_suicide"])
     ]
@@ -627,12 +646,8 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
 
     rounds = rounds.drop(columns=["next_start_tick"])
     grenades.attrs["detonations"] = detonations
-    trade_windows = build_trade_windows(
-        parser, kills, damages, shots, player_rounds_side, tickrate, TRADE_WINDOW_SECONDS
-    )
-
-    shots, engagements, vis_backend = build_aim_tables(
-        parser, shots, damages, kills, player_rounds_side, smokes, map_name, client_build, tickrate, warnings
+    trade_windows, engagements, vis_backend, shots = _build_trade_and_aim(
+        parser, kills, damages, shots, player_rounds_side, smokes, map_name, client_build, tickrate, warnings, fast
     )
     player_zones = _build_player_zones(kills)
     return ParsedDemo(

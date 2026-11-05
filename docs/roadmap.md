@@ -53,6 +53,7 @@
 ---
 
 ## ⏳ Phase 2: Ratings (สูตรของเราเอง ไม่ใช้ชื่อ Leetify)
+- [x] **`wp_states` builder + CLI `wp-states`** (impact-spec §6.3, ยังไม่ train, 2026-11-05): 1 แถว/state (freeze end, kill, plant, defuse, explode, round end) · features `t_alive`/`ct_alive`, `bomb_planted`, `time_left_s`, `equip_diff_k`, `map`, label `t_won` · column `trainable` แยกแถวที่ model ต้องทาย vs rule-fixed · ตัด validation match ด้วย fingerprint (map + จำนวนรอบ + สกอร์ + ชุด steam_id) · สร้าง `data/train_demos/manifest.csv` อัตโนมัติ ผล: 30/34 แมตช์ (ตัด 4 validation, 0 parse fail), 713 รอบ, 6,285 state (4,972 trainable); แมตช์/แมพ dust2 15 · mirage 6 · cache 4 · ancient 3 · inferno 2
 - [ ] Impact Rating: win-probability model + breakdown 9 หมวด
 - [ ] Aim / Utility / Positioning Score: แยกตามกลุ่มปืน (sniper / rifle / pistol) ไม่ให้ metric ที่เป็น n/a ดันคะแนน และบอกความมั่นใจตามขนาดตัวอย่าง (บทเรียนจาก Aim 100 ของ Leetify ในแมตช์ที่ใช้ AWP)
 
@@ -114,3 +115,7 @@
 | validate gating | gate core metric + opening duels + clutches; metric ที่ registry ตั้ง `status: calibrating` (ตอนนี้ trade opp/att) รายงานแต่ไม่ fail |
 | Map geometry | awpy-data `.mesh` (`pip install -e .[visibility]`, cache `~/.awpy/<ClientVersion>`, ไม่ commit) เลือก release ตาม `csgo_v<build>` ใน header ของ demo (2026-11-05) |
 | Parse limits | .dem หลังแตก ≤ 1 GiB (`MAX_DEMO_BYTES`), parse ≤ 300s (`PARSE_TIMEOUT_SECONDS`); เวลาแตกไฟล์ไม่นับใน timeout (คุมด้วยขนาดแทน) |
+| WP state timers | `mp_roundtime` อ่านจาก `server_cvar` (นาที → วินาที); `mp_c4timer` ไม่มีใน demo → ใช้ `C4_TIMER_S`=40; เตือนถ้าค่าจาก demo ต่าง constant >1s (2026-11-05) |
+| WP equip_diff_k | (Σ `current_equip_value` T − CT ของผู้เล่นที่ยังรอด)/1000 ณ state tick นับ "รอด" จาก kills; อ่าน tick data เฉพาะ tick ที่เป็น state ไม่เก็บทั้งเกม (2026-11-05) |
+| `parse_demo(fast=)` | `fast=True` ข้าม trade_windows + aim/visibility (ตาราง event เหมือนเดิมทุกกรณี); default `False` (2026-11-05) |
+| match fingerprint | map + จำนวนรอบ + สกอร์ (T−CT) + ชุด steam_id; ใช้ตัด validation match ออกจาก train (2026-11-05) |

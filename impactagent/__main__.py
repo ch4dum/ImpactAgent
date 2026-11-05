@@ -98,6 +98,12 @@ def _cmd_visibility(args: argparse.Namespace) -> int:
     return run(args.demos)
 
 
+def _cmd_wp_states(args: argparse.Namespace) -> int:
+    from impactagent.ratings.wp_states import run_wp_states
+
+    return run_wp_states(args.dir, args.out, args.manifest)
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):  # Windows consoles + non-ASCII player names
         try:
@@ -142,6 +148,12 @@ def main(argv: list[str] | None = None) -> int:
     vis = sub.add_parser("visibility", help="kill visibility report per backend (needs .[visibility])")
     vis.add_argument("demos", nargs="+", type=Path)
     vis.set_defaults(func=_cmd_visibility)
+
+    w = sub.add_parser("wp-states", help="build WP training states (impact-spec §6.3)")
+    w.add_argument("dir", type=Path)
+    w.add_argument("--out", default="data/parsed/wp_states.parquet")
+    w.add_argument("--manifest", default="data/train_demos/manifest.csv")
+    w.set_defaults(func=_cmd_wp_states)
 
     args = ap.parse_args(argv)
     return args.func(args)

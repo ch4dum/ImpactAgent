@@ -6,6 +6,11 @@ SIDE_BY_TEAM_NUM = {TEAM_T: "T", TEAM_CT: "CT"}
 
 DEFAULT_TICKRATE = 64
 
+# Round / bomb timers for wp_states time_left_s (impact-spec §2.1). Read from server_cvar
+# (mp_roundtime, mp_c4timer) when present; these are the CS2 competitive defaults (seconds).
+ROUND_TIME_S = 115.0
+C4_TIMER_S = 40.0
+
 GRENADE_WEAPONS = {
     "flashbang": "flash",
     "smokegrenade": "smoke",
