@@ -85,3 +85,35 @@ SMOKE_RADIUS = 144.0
 SMOKE_CENTER_Z_OFFSET = 32.0
 SMOKE_BLOOM_SECONDS = 0.5
 SMOKE_DURATION_SECONDS = 22.0625  # detonate -> expired, same for all 28 paired smokes in inferno
+
+# ---- aim (impactagent/parse/aim.py, impactagent/metrics/aim.py, spec §1)
+# Weapon classes (demo weapon names without "weapon_").
+RIFLES = {"ak47", "m4a1", "m4a1_silencer", "famas", "galilar", "aug", "sg556"}
+SNIPERS = {"awp", "ssg08", "scar20", "g3sg1"}
+SMGS = {"mp9", "mac10", "mp7", "mp5sd", "ump45", "p90", "bizon"}
+PISTOLS = {"glock", "hkp2000", "usp_silencer", "p250", "elite", "fiveseven", "tec9", "cz75a", "deagle", "revolver"}
+SHOTGUNS = {"nova", "xm1014", "sawedoff", "mag7"}
+MACHINE_GUNS = {"m249", "negev"}
+GUNS = RIFLES | SNIPERS | SMGS | PISTOLS | SHOTGUNS | MACHINE_GUNS
+# Max running speed (units/s, unscoped) per weapon, CS2 items_game (VERIFY).
+WEAPON_MAX_SPEED = {
+    "ak47": 215, "m4a1": 225, "m4a1_silencer": 225, "famas": 220, "galilar": 215, "aug": 220, "sg556": 210,
+    "awp": 200, "ssg08": 230, "scar20": 215, "g3sg1": 215,
+    "glock": 240, "hkp2000": 240, "usp_silencer": 240, "p250": 240, "elite": 240, "fiveseven": 240,
+    "tec9": 240, "cz75a": 240, "deagle": 230, "revolver": 220,
+    "mp9": 240, "mac10": 240, "mp7": 220, "mp5sd": 235, "ump45": 230, "p90": 230, "bizon": 240,
+    "nova": 220, "xm1014": 215, "sawedoff": 210, "mag7": 225, "m249": 195, "negev": 150,
+}
+# Counter-strafe: a rifle shot at a seen enemy, not ducking, is "good" below this × max speed.
+COUNTER_STRAFE_SPEED_FRACTION = 0.34
+# Spray = shots of one weapon with <= this gap between shots; sprays need >= SPRAY_MIN_SHOTS.
+SPRAY_MAX_GAP_SECONDS = 0.25
+SPRAY_MIN_SHOTS = 3
+SPRAY_FIRST_COUNTED_SHOT = 2  # 0-based: spray accuracy counts the 3rd bullet on (HYPOTHESIS)
+# First bullet = a shot after at least this long without shooting (HYPOTHESIS).
+FIRST_BULLET_GAP_SECONDS = 0.5
+# Engagement: A sees B continuously (gaps <= ENGAGEMENT_GAP_TICKS) before damaging him;
+# first_seen is searched back at most ENGAGEMENT_LOOKBACK_SECONDS.
+ENGAGEMENT_GAP_TICKS = 8
+ENGAGEMENT_LOOKBACK_SECONDS = 2.5
+TTD_MAX_SECONDS = 1.0  # time to damage / crosshair placement drop engagements at or over this

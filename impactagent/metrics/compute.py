@@ -1,4 +1,4 @@
-"""General + Utility metrics per player (one match).
+"""General + Utility + Trades + Clutches (+ Aim from metrics/aim.py) per player (one match).
 
 Each metric returns value + numerator/denominator where it is a ratio,
 matching the metric_values table in docs/design/data-model.md.
@@ -21,6 +21,7 @@ from impactagent.constants import (
     TRADE_ATTEMPT_AIM_DEG,
     TRADE_WINDOW_SECONDS,
 )
+from impactagent.metrics.aim import aim_metrics
 from impactagent.parse.demo import ParsedDemo
 
 
@@ -367,5 +368,6 @@ def compute_match_metrics(p: ParsedDemo) -> pd.DataFrame:
     util = utility_metrics(p, all_kills)
     trades = trade_metrics(p)
     clutch = clutch_metrics(p, build_clutches(replace(p, kills=all_kills)))
+    aim = aim_metrics(p)
     names = p.players.set_index("steam_id")[["name", "team"]]
-    return names.join(gen).join(util).join(trades).join(clutch)
+    return names.join(gen).join(util).join(trades).join(clutch).join(aim)

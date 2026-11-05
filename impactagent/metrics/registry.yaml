@@ -542,3 +542,142 @@
   scopes: [all]
   coach_hint: Money in grenades you died with. Use utility before taking a fight you might lose.
   status: exact
+
+# ------------------------------------------------------------------ aim (spec §1; shots / engagements from impactagent/parse/aim.py)
+# Visibility (enemy_spotted, engagements) = impactagent/visibility RaycastBackend (spotted fallback).
+- id: shots_fired
+  label: Shots Fired
+  category: aim
+  unit: count
+  format: "0"
+  direction: neutral
+  aggregation: sum
+  source: shots WHERE aim_shot (gun, not shotgun / knife / taser / grenade, not in the shooter's death tick), whole round window incl. after round_end
+  scopes: [all]
+  ref: docs/metrics/leetify-metrics-spec.md#1-aim
+  status: exact
+
+- id: accuracy_all
+  label: Hit Rate (all shots)
+  category: aim
+  unit: pct
+  format: "0%"
+  direction: higher_better
+  aggregation: ratio
+  numerator: gun shots that hurt >= 1 enemy in the same tick (pellets / wallbangs = 1 hit)
+  denominator: shots_fired
+  source: shots.hit
+  scopes: [all]
+  ref: docs/metrics/leetify-metrics-spec.md#1-aim
+  status: exact
+
+- id: accuracy_head
+  label: Headshot Hit Share
+  category: aim
+  unit: pct
+  format: "0%"
+  direction: higher_better
+  aggregation: ratio
+  numerator: counted shots (no AWP / shotgun) whose every enemy hurt is a head hit
+  denominator: counted shots (no AWP / shotgun) that hit an enemy
+  source: shots.hit_head, shots.hit WHERE shots.aim_shot
+  scopes: [all]
+  coach_hint: Of your hits, how many were headshots. Keep the crosshair at head height.
+  ref: docs/metrics/leetify-metrics-spec.md#12-headshot-accuracy-
+  status: exact
+
+- id: accuracy_enemy_spotted
+  label: Hit Rate on Seen Enemies
+  category: aim
+  unit: pct
+  format: "0%"
+  direction: higher_better
+  aggregation: ratio
+  numerator: gun shots fired while an enemy was visible that hit an enemy
+  denominator: gun shots fired while an enemy was visible
+  source: shots.enemy_spotted, shots.hit
+  scopes: [all]
+  coach_hint: Accuracy when you could actually see someone; ignores spam and wallbang attempts.
+  ref: docs/metrics/leetify-metrics-spec.md#11-accuracy-enemy-spotted-
+  status: calibrating
+
+- id: spray_accuracy
+  label: Spray Control
+  category: aim
+  unit: pct
+  format: "0%"
+  direction: higher_better
+  aggregation: ratio
+  numerator: hits among rifle spray shots (spray >= 3 shots, gap <= 0.25 s, 3rd bullet on, enemy visible)
+  denominator: those rifle spray shots
+  source: shots.spray_id, shots.shot_index_in_spray
+  scopes: [all]
+  ref: docs/metrics/leetify-metrics-spec.md#13-spray-accuracy-
+  status: calibrating
+
+- id: counter_strafe_pct
+  label: Stopped Shots
+  category: aim
+  unit: pct
+  format: "0%"
+  direction: higher_better
+  aggregation: ratio
+  numerator: rifle shots at a visible enemy, not ducking, with speed_2d < 34% of the weapon's max speed
+  denominator: rifle shots at a visible enemy, not ducking
+  source: shots.speed_2d, shots.ducking, shots.enemy_spotted
+  scopes: [all]
+  coach_hint: Share of rifle shots fired while standing still. Tap the opposite key before shooting.
+  ref: docs/metrics/leetify-metrics-spec.md#16-counter-strafing-
+  status: calibrating
+
+- id: first_bullet_accuracy
+  label: Opening Bullet Hit Rate
+  category: aim
+  unit: pct
+  format: "0%"
+  direction: higher_better
+  aggregation: ratio
+  numerator: first bullets (no shot in the 0.5 s before, enemy visible, no sniper) that hit
+  denominator: those first bullets
+  source: shots.first_bullet, shots.enemy_spotted
+  scopes: [all]
+  ref: docs/metrics/leetify-metrics-spec.md#1-aim
+  status: calibrating
+
+- id: ttd_ms
+  label: Seen-to-Damage Time
+  category: aim
+  unit: ms
+  format: "0"
+  direction: lower_better
+  aggregation: median
+  source: engagements.ttd_ms WHERE ttd_ms < 1000
+  scopes: [all]
+  coach_hint: Time from first seeing an enemy to first damaging him. High values usually mean poor crosshair placement or unprepared peeks.
+  ref: docs/metrics/leetify-metrics-spec.md#15-time-to-damage-reaction_time-
+  status: calibrating
+
+- id: ttk_ms
+  label: Seen-to-Kill Time
+  category: aim
+  unit: ms
+  format: "0"
+  direction: lower_better
+  aggregation: median
+  source: engagements.ttk_ms (engagements that end in a kill)
+  scopes: [all]
+  ref: docs/metrics/leetify-metrics-spec.md#1-aim
+  status: calibrating
+
+- id: crosshair_placement_deg
+  label: Pre-aim Error
+  category: aim
+  unit: deg
+  format: "0.0"
+  direction: lower_better
+  aggregation: median
+  source: engagements.crosshair_err_deg (view at first_seen vs view at first damage) WHERE ttd_ms < 1000
+  scopes: [all]
+  coach_hint: How far you had to move your crosshair after an enemy appeared. Pre-aim common angles at head height.
+  ref: docs/metrics/leetify-metrics-spec.md#14-crosshair-placement-preaim-
+  status: calibrating

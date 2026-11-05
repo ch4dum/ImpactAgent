@@ -40,6 +40,25 @@ Leetify **ไม่ใช้** radar spotted ของเกม (ช้าได
 
 ## 1. Aim
 
+**ผลการ implement (2026-11-05, `impactagent/parse/aim.py` + `impactagent/metrics/aim.py`, visibility = raycast):** dev บน Inferno แล้ว holdout บน Mirage (ก่อนแก้โค้ด core aim ได้ 9/20)
+
+| metric (id) | นิยามที่ใช้ | inferno | mirage | สถานะ |
+|---|---|---|---|---|
+| `shots_fired` | ปืนทุกนัดในช่วงรอบ (รวมหลัง round_end) **ไม่นับลูกซอง** และ**ไม่นับนัดใน tick ที่คนยิงตาย**, ไม่นับมีด / taser / ระเบิด | 10/10 | 10/10 | exact |
+| `accuracy_all` | นัดที่ทำ damage ศัตรูใน tick เดียวกัน ÷ shots_fired (ลูกซอง / ทะลุ 2 คน = 1 hit) | 10/10 | 10/10 | exact |
+| `accuracy_head` | ต่อนัด ไม่นับ AWP / ลูกซอง: นัดที่ hurt **ทุกครั้ง**เป็นหัว ÷ นัดที่โดน | 10/10 | 10/10 | exact |
+| `accuracy_enemy_spotted` | นัดที่ยิงตอนเห็นศัตรู ≥ 1 คน (raycast + ควัน + FOV) | 3/10 | 6/10 | calibrating (MAE 0.025 / 0.012) |
+| `counter_strafe_pct` | rifle (ไม่นับ sniper) ยิงตอนเห็นศัตรู ไม่นั่ง, ดี = speed < 34% ของ max | 2/9 | 3/9 | calibrating |
+| `spray_accuracy` | rifle spray ≥ 3 นัด (gap ≤ 0.25s) นัดที่ 3 เป็นต้นไป ตอนเห็นศัตรู | 0/7 | 3/8 | calibrating |
+| `first_bullet_accuracy` | นัดแรกหลังไม่ยิง ≥ 0.5s ตอนเห็นศัตรู ไม่นับ sniper | 1/10 | 0/10 | calibrating |
+| `ttd_ms` | median (first damage − first seen) < 1s | 0/10 | 0/10 | calibrating |
+| `ttk_ms` | median (kill − first seen) | 1/10 | 0/10 | calibrating |
+| `crosshair_placement_deg` | median มุม view ตอน first seen กับตอน first damage, ttd < 1s | 0/10 | 0/10 | calibrating |
+
+- **TTD / TTK / crosshair ของเราต่ำกว่า Leetify ทุกคน** (TTD สั้นกว่า 16–390ms, crosshair เล็กกว่า ~2 เท่า) ทุก config ที่ลอง (gap 0–64 tick, FOV / ไม่มี FOV, ควัน / ไม่มีควัน, ตัด TTD สั้น, mean แทน median) จึงน่าจะมาจาก **first seen ของเราช้ากว่า** ไม่ใช่สูตร. สงสัย: mesh ของ awpy (physics) มี player clip / prop ที่ไม่บังสายตาจริง หรือ Leetify ใช้ hitbox ที่ใหญ่กว่า 3 จุดของเรา (ลองเพิ่มจุด ±8–16u แล้วไม่ดีขึ้นใน spotted accuracy)
+- **Spray accuracy ของ Leetify ไม่น่าใช่ hit ÷ นัด**: inferno yyh 0.83 ทั้งที่ accuracy รวม 0.11 และ spotted 0.51 ลองแบบ "spray ที่โดน ≥ k ครั้ง" แล้วก็ไม่ตรง อาจวัด recoil control จากมุม (ต้องใช้ aim punch)
+- Null: spray null เมื่อไม่มี spray ที่เข้าเกณฑ์; Leetify ให้ null ใน 3 กรณีที่เราได้ค่า (spray 2–4 นัด) → เกณฑ์ spray ของ Leetify เข้มกว่า
+
 ### 1.1 Accuracy (Enemy Spotted) ✅
 - **นิยาม:** นัดที่โดน ÷ นัดที่ยิง *ขณะที่เห็นศัตรู*
 - **API:** `accuracy_enemy_spotted`, `shots_fired_enemy_spotted`, `shots_hit_enemy_spotted` (มี `accuracy` แบบนับทุกนัดด้วย)
@@ -175,7 +194,7 @@ kills, deaths, assists, HS kills, K/D, damage, ADR (`dpr`), KAST, rounds survive
 4. Trades (calibrate) → KAST
 5. WP model → Impact Rating
 
-## 8. สถานะกฎ (validate 2 แมตช์: core inferno 275/275, mirage 320/320; opening 13/13, 24/24; clutch 15/15, 28/28)
+## 8. สถานะกฎ (validate 2 แมตช์: core inferno 305/305, mirage 350/350; opening 13/13, 24/24; clutch 15/15, 28/28)
 
 ✅ = มีเคสพิสูจน์ใน 2 แมตช์ · 🟢 = มีเคสพิสูจน์ 1 แมตช์ อีกแมตช์ไม่ขัด · 🟡 = สมมติฐาน (ยังไม่มีเคสที่แยกทางเลือกได้)
 
@@ -211,4 +230,14 @@ kills, deaths, assists, HS kills, K/D, damage, ADR (`dpr`), KAST, rounds survive
 | Visibility: lag window คงที่ 7 tick (ไม่ใช้ ping) | rewind ที่ต้องใช้ไม่สัมพันธ์กับ `ping` ของคนยิง (rank corr 0.01, 64 hit 2 แมตช์); kill ปกติต้องย้อนสูงสุด 6 tick | ✅ |
 | Visibility: ควัน = ทรงกลม R 144 / +32z / บล็อกหลังระเบิด 0.5s ถึง expired | inferno (calibrate): ปกติ 72/72 ไม่โดนบล็อก, ผ่านควัน 7/7 โดนบล็อก; mirage (holdout): 150/152, 5/7. HE เจาะควันยังไม่ทำ | 🟢 |
 | Visibility: FOV 50° (half-angle) | kill: มุมจากเป้าถึงจุดที่ใกล้สุด p95 5.8°, max 24.3° จึงไม่ตัด kill; ค่าเป๊ะยังไม่มีเคสพิสูจน์ | 🟡 |
+| Aim: shots_fired ไม่นับลูกซอง | mirage holdout: J mag7 7, B mag7 5, Boonrywaa mag7 1 = ส่วนเกินพอดี; ch4dum sawedoff, idontgiveafaq xm1014 | 🟢 (inferno ไม่มีลูกซอง) |
+| Aim: ไม่นับนัดใน tick ที่คนยิงตาย | mirage: ch4dum 1, idontgiveafaq 1, o2donggg 3, yyh 1 = ส่วนเกินที่เหลือพอดี | 🟢 |
+| Aim: นัดหลัง round_end นับ | inferno: Chainnizy 46 นัด, ch4dum 5, yyh 16, Wagga 18 | 🟢 (mirage ไม่ขัด) |
+| Aim: hit = player_hurt ปืนใน tick เดียวกับ weapon_fire (ทุก hurt มี fire tick เดียวกัน) | accuracy_all 20/20 | ✅ |
+| Head accuracy: ไม่นับ AWP | inferno ch4dum 0.83 (ถ้านับ AWP = 0.35) | 🟢 |
+| Head accuracy: ไม่นับลูกซอง | mirage: นับลูกซอง 5/10, ไม่นับ 9/10 | 🟢 |
+| Head accuracy: นัดที่โดน 2 คน (หัว + อก) ไม่นับเป็นหัว | inferno Wagga r11, mirage PeterGooners r13 (ลำดับ event = หัวก่อน); "ใช้ hurt สุดท้ายของนัด" ก็อธิบายได้ | ✅ ผล / 🟡 กฎเป๊ะ |
+| Head accuracy: SSG08 / auto-sniper นับไหม | ไม่มี hit ด้วย SSG / SCAR / G3 ใน 2 แมตช์ (ตอนนี้นับ) | 🟡 |
+| Head accuracy: คนไม่มี hit ได้ null หรือ 0 | ทุกคนมี hit (ตอนนี้ให้ null; validate ถือว่า null = 0 ok) | 🟡 |
+| Counter-strafe ไม่นับ sniper | ch4dum (AWP) null ทั้งใน Leetify และของเรา | 🟢 |
 | **Death จากการออกเกม** (`kills.by_disconnect`): suicide/world ที่ tick เดียวกับ `player_disconnect` ของคนตาย (±1 tick). เจอ 5 ครั้งใน 2 แมตช์ (Suzy ระหว่างแมตช์, ที่เหลือหลังจบแมตช์). **General ยังนับเป็น death** (Leetify: Suzy deaths 13) และ KAST ไม่เปลี่ยน; ใช้แค่ clutch outcome. J ใน mirage หลุดกลางเกม 2 ครั้งแต่ไม่มี death เกิดขึ้น | 5 เคส | ✅ ตรวจจับ / 🟢 ผลต่อ clutch |

@@ -26,6 +26,7 @@ from impactagent.constants import (
     SIDE_BY_TEAM_NUM,
     TRADE_WINDOW_SECONDS,
 )
+from impactagent.parse.aim import ENGAGEMENT_COLUMNS, build_aim_tables
 from impactagent.parse.trades import build_trade_windows
 from impactagent.visibility.smoke import SMOKE_COLUMNS, pair_smokes
 
@@ -50,6 +51,8 @@ class ParsedDemo:
     death_inventory: pd.DataFrame
     trade_windows: pd.DataFrame = field(default_factory=pd.DataFrame)
     smokes: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=SMOKE_COLUMNS))
+    engagements: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=ENGAGEMENT_COLUMNS))
+    visibility_backend: str = ""  # backend used for shots.enemy_spotted / engagements
     client_build: int | None = None  # csgo_v<build> from the header: picks the map mesh release
     warnings: list[str] = field(default_factory=list)
 
@@ -67,6 +70,7 @@ class ParsedDemo:
             "death_inventory": self.death_inventory,
             "trade_windows": self.trade_windows,
             "smokes": self.smokes,
+            "engagements": self.engagements,
         }
 
 
@@ -566,6 +570,9 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
     trade_windows = build_trade_windows(
         parser, kills, damages, shots, player_rounds_side, tickrate, TRADE_WINDOW_SECONDS
     )
+    shots, engagements, vis_backend = build_aim_tables(
+        parser, shots, damages, kills, player_rounds_side, smokes, map_name, client_build, tickrate, warnings
+    )
     return ParsedDemo(
         path=path,
         sha256=sha256,
@@ -583,6 +590,8 @@ def _parse(dem_path: Path, path: Path, sha256: str) -> ParsedDemo:
         death_inventory=death_inventory,
         trade_windows=trade_windows,
         smokes=smokes,
+        engagements=engagements,
+        visibility_backend=vis_backend,
         client_build=client_build,
         warnings=warnings,
     )

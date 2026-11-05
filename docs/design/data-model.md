@@ -72,7 +72,7 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash
 
 **`death_inventory`**: match_id, tick, steam_id, inventory (list ชื่อ item), active_weapon. หนึ่งแถวต่อการตาย (เฉพาะคนที่ตาย ณ tick นั้น อ่านจาก tick − 1). ใช้คิด unused utility
 
-**`shots`**: match_id, round_no, tick, shooter_id, weapon, pitch, yaw, xyz, **speed_2d**, ducking, scoped, **spray_id**, shot_index_in_spray, enemy_spotted, hit_victim_id (nullable), engagement_id (nullable)
+**`shots`**: match_id, round_no, tick, shooter_id, weapon, **weapon_class** (`rifle` · `sniper` · `smg` · `pistol` · `shotgun` · `mg` · `melee` · `other`), **speed_2d**, ducking, scoped, **died_this_tick**, **aim_shot** (นัดที่นับใน accuracy: ปืน ไม่ใช่ลูกซอง ไม่ใช่ tick ที่คนยิงตาย), hit, hit_head (ทุก hurt ของนัดเป็นหัว), hit_victim_id (nullable), enemy_spotted (visibility), **spray_id**, shot_index_in_spray, spray_len, first_bullet, engagement_id (nullable). (pitch / yaw / xyz ยังไม่เก็บ)
 
 **`grenades`**: match_id, round_no, entity_id, thrower_id, type (`flash`/`smoke`/`he`/`molotov`/`incendiary`/`decoy`), throw_tick, detonate_tick, detonate_xyz, detonate_place
 
@@ -88,14 +88,15 @@ match_id, round_no, tick, round_time, attacker_id, victim_id, assister_id, flash
 |---|---|
 | engagement_id | |
 | match_id, round_no, attacker_id, victim_id | |
-| first_seen_tick | จาก visibility module |
-| first_damage_tick | nullable |
+| first_seen_tick | จาก visibility module: สแกนย้อนจาก damage ทีละ tick ขณะ A เห็น B (gap ≤ 8 tick) สูงสุด 2.5s; null = ยังเห็นอยู่ที่ขอบ (≥ 2.5s) |
+| first_damage_tick, last_damage_tick | |
 | kill_tick | nullable |
 | ttd_ms | first_damage − first_seen |
+| ttk_ms | kill − first_seen (nullable) |
 | crosshair_err_deg | มุมระหว่าง view ตอน first_seen กับตอน first_damage |
-| shots, hits | |
-| outcome | `kill` · `damaged` · `no_damage` · `died` |
-| attacker_place, victim_place | |
+| shots, hits | shots = นัดของ A ตั้งแต่ first_seen ถึง damage สุดท้าย, hits = tick ที่ทำ damage |
+| outcome | v1: `kill` · `damaged` (ยังไม่สร้าง engagement ที่ไม่มี damage: `no_damage` · `died` ทีหลัง) |
+| attacker_place, victim_place | ยังไม่ทำ |
 
 **`trade_windows`**: match_id, round_no, death_tick, dead_id, killer_id, teammate_id, had_opportunity, attempted, succeeded (1 แถวต่อ teammate ที่ยังรอด ใช้ทั้ง Trade Kill และ Traded Death). Parser เก็บ feature ที่ sample จาก tick ใน window (ไม่เก็บ tick data): dist_to_victim, dist_to_killer, min_dist_to_killer, teammate_spotted_killer, killer_spotted_teammate, min_aim_angle_spotted, damaged_killer, fired, succeeded. `had_opportunity` / `attempted` คิดใน metrics (นิยามยังเป็นสมมติฐาน, spec §3)
 
