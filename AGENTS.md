@@ -31,6 +31,7 @@ CS2 demo (`.dem`) analytics web app in the style of Leetify, plus an LLM coach t
 | `impactagent/metrics/compute.py` | Metrics per player (general, utility, trades, clutches), `compute_match_metrics(parsed)` |
 | `impactagent/metrics/registry.yaml` | **Metric registry**: one entry per finished metric (data-model §4), `status: exact` / `calibrating`. Add a metric here when it is done; validate reads `calibrating` from it |
 | `impactagent/parse/trades.py` | `trade_windows` (per death × alive teammate, features sampled inside the trade window) |
+| `scripts/visibility_spike.py` | Spike (not in the package): kill line-of-sight with awpy `VisibilityChecker`; needs `pip install -e .[visibility]` |
 | `impactagent/__main__.py` | CLI: `inspect`, `parse`, `validate` |
 | `impactagent/validate/__init__.py` | Compare our metrics with a truth JSON; aborts if demo and truth look like different matches |
 | `data/validation/inferno-44a522c3.json` | **Validation pair 1 (calibration):** Leetify's real values for `scripts/demos/003852158461294936246_0991785667.dem.bz2` (de_inferno 13:0, 13 rounds; utility only for our team; read its `note`). **Gitignored, never commit.** |

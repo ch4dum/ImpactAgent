@@ -21,6 +21,7 @@
 - [ ] Head Accuracy (ไม่ต้องใช้ visibility)
 - [ ] Engagements + visibility v0 (`spotted`) → Aim: spotted accuracy, TTD, crosshair, counter-strafe, spray, TTK, first bullet
 - [ ] Visibility v1 (raycast กับ map geometry) ทำเฉพาะถ้า v0 คลาดจาก Leetify มาก
+  - [x] Spike awpy 3.1.1 `VisibilityChecker` (`scripts/visibility_spike.py`, ยังไม่เข้า metrics): kill ปกติ "เห็น" 95.8% (inferno 69/72) / 95.4% (mirage 145/152), penetrated เห็นแค่ 1/2 และ 1/8, ~3-4 µs ต่อ ray, mesh โหลด < 0.1s
 - [ ] Round buy type (pistol / eco / semi-eco / force / full) + Map Zones (`last_place_name`)
 
 ## ⏳ Phase 2: Ratings (สูตรของเราเอง ไม่ใช้ชื่อ Leetify)
@@ -66,4 +67,5 @@
 | Visibility | เริ่มที่ `spotted` แล้วค่อยดูว่าต้อง raycast ไหม (`approximate_spotted_by` ให้ trade opportunity ตรงแค่ ~60%) |
 | Trade window | 4.0s (ช่วงที่ข้อมูลยอมรับ [3.48, 4.47) s) |
 | validate gating | gate core metric + opening duels + clutches; metric ที่ registry ตั้ง `status: calibrating` (ตอนนี้ trade opp/att) รายงานแต่ไม่ fail |
+| Map geometry | awpy-data `.mesh` (`pip install -e .[visibility]`, cache `~/.awpy/<ClientVersion>`, ไม่ commit) เลือก release ตาม `csgo_v<build>` ใน header ของ demo (2026-11-05) |
 | Parse limits | .dem หลังแตก ≤ 1 GiB (`MAX_DEMO_BYTES`), parse ≤ 300s (`PARSE_TIMEOUT_SECONDS`); เวลาแตกไฟล์ไม่นับใน timeout (คุมด้วยขนาดแทน) |

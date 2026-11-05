@@ -32,3 +32,9 @@ data/validation/
 
 # pip install -e .
 *.egg-info/
+
+# Map geometry / nav assets (awpy-data cache lives in ~/.awpy; never commit, ~10 MB per map)
+.awpy/
+*.mesh
+*.tri
+*.nav
