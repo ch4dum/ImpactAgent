@@ -15,7 +15,9 @@ from impactagent.ratings.credit import CFG_PATH
 from impactagent.ratings.wp_model import _MODEL_PATH
 
 # Bump by hand when the parser's tables / rules or the state snapshot change (events/, snapshot/).
-PARSE_VERSION = "p1"
+# p2 (2026-11-06): bool + None columns kept as nullable bool (p1 wrote them as strings), and
+# header.json gained match_end_tick / visibility_backend / parse_warnings.
+PARSE_VERSION = "p2"
 # Bump by hand when impact-spec credit rules change in code without a credit.yaml change.
 IMPACT_SPEC_REV = "is1"
 # Bundle layout (manifest format).
@@ -42,10 +44,11 @@ def _git_sha() -> str | None:
         return None
 
 
-def components() -> dict:
-    """Every input that decides a bundle's content, with full hashes."""
+def components(parse_version: str | None = None) -> dict:
+    """Every input that decides a bundle's content, with full hashes. `parse_version`: of the
+    bundle's events / snapshot when recomputing (default: this code's PARSE_VERSION)."""
     return {
-        "parse_version": PARSE_VERSION,
+        "parse_version": parse_version or PARSE_VERSION,
         "metrics_sha256": _sha(REGISTRY_PATH),
         "wp_model": _MODEL_PATH.stem,
         "wp_model_sha256": _sha(_MODEL_PATH),

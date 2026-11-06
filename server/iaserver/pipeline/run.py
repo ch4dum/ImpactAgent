@@ -1,7 +1,9 @@
 """run_match(demo) -> MatchBundle: parse + state snapshot + wp_states + Impact + metrics.
 
 Calls impactagent's public functions only (no metric logic here). The demo is decompressed
-once; parse and the state snapshot read the same plain .dem.
+once; parse and the state snapshot read the same plain .dem. `derive` (wp_states -> Impact ->
+metrics) is shared with recompute (bundle.py), which runs it on a ParsedDemo rebuilt from a
+bundle, without the demo.
 """
 
 from __future__ import annotations
@@ -32,7 +34,7 @@ class InvariantError(RuntimeError):
 @dataclass
 class MatchBundle:
     source: Path
-    sha256: str                    # sha256 of the plain .dem (= matches.dem_sha256)
+    sha256: str                    # sha256 of the plain .dem (= matches.dem_sha256, Parquet match_id)
     map_name: str
     tickrate: int
     client_build: int | None
@@ -45,6 +47,10 @@ class MatchBundle:
     timings: dict[str, float] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     wp_stats: dict = field(default_factory=dict)
+    # ParsedDemo fields that are not tables (kept in snapshot/header.json, p2)
+    match_end_tick: int | None = None
+    visibility_backend: str = ""
+    parse_warnings: list[str] = field(default_factory=list)
 
 
 def metric_values_long(metrics: pd.DataFrame, match_id: str) -> pd.DataFrame:
@@ -58,6 +64,35 @@ def metric_values_long(metrics: pd.DataFrame, match_id: str) -> pd.DataFrame:
     long["numerator"] = pd.Series(pd.NA, index=long.index, dtype="Float64")
     long["denominator"] = pd.Series(pd.NA, index=long.index, dtype="Float64")
     return long[METRIC_VALUE_COLUMNS]
+
+
+def derive(p, snap: StateSnapshot) -> tuple[dict[str, pd.DataFrame], dict, dict[str, float]]:
+    """ParsedDemo + StateSnapshot -> (derived tables, wp stats, timings). Never opens the demo.
+    Raises InvariantError."""
+    t: dict[str, float] = {}
+    t1 = time.perf_counter()
+    states, wp_stats = build_wp_states(p, snapshot=snap)
+    events, ev_rounds = build_rating_events(p, states)
+    problems = check_invariants(events, ev_rounds)
+    if problems:
+        raise InvariantError(f"{p.path.name}: {len(problems)} invariant failures, e.g. {problems[:3]}")
+    prr = player_round_ratings(events, p)
+    t["wp_credit"] = time.perf_counter() - t1
+
+    t1 = time.perf_counter()
+    mt = match_tables(p, events)
+    metrics = mt["metrics"]
+    derived = {
+        "wp_states": states,
+        "rating_events": events,
+        "player_round_ratings": prr,
+        "player_rounds": mt["player_rounds"],
+        "clutches": mt["clutches"],
+        "metrics": metrics.reset_index(),
+        "metric_values": metric_values_long(metrics, p.sha256),
+    }
+    t["metrics"] = time.perf_counter() - t1
+    return derived, wp_stats, t
 
 
 def run_match(dem_path: str | Path, timeout: float | None = PARSE_TIMEOUT_SECONDS,
@@ -78,29 +113,8 @@ def run_match(dem_path: str | Path, timeout: float | None = PARSE_TIMEOUT_SECOND
         t["snapshot"] = time.perf_counter() - t1
     p = replace(p, path=path)  # the temp .dem is gone; keep the original for messages
 
-    t1 = time.perf_counter()
-    states, wp_stats = build_wp_states(p, snapshot=snap)
-    events, ev_rounds = build_rating_events(p, states)
-    problems = check_invariants(events, ev_rounds)
-    if problems:
-        raise InvariantError(f"{path.name}: {len(problems)} invariant failures, e.g. {problems[:3]}")
-    prr = player_round_ratings(events, p)
-    t["wp_credit"] = time.perf_counter() - t1
-
-    t1 = time.perf_counter()
-    mt = match_tables(p, events)
-    metrics = mt["metrics"]
-    derived = {
-        "wp_states": states,
-        "rating_events": events,
-        "player_round_ratings": prr,
-        "player_rounds": mt["player_rounds"],
-        "clutches": mt["clutches"],
-        "metrics": metrics.reset_index(),
-        "metric_values": metric_values_long(metrics, p.sha256),
-    }
-    t["metrics"] = time.perf_counter() - t1
-
+    derived, wp_stats, td = derive(p, snap)
+    t.update(td)
     comps = components()
     return MatchBundle(
         source=path, sha256=p.sha256, map_name=p.map_name, tickrate=p.tickrate,
@@ -108,4 +122,6 @@ def run_match(dem_path: str | Path, timeout: float | None = PARSE_TIMEOUT_SECOND
         events=parsed_tables(p), snapshot=snap, derived=derived,
         versions=comps, pipeline_version=pipeline_version(comps),
         timings=t, warnings=list(p.warnings) + list(wp_stats.get("timer_warns", [])), wp_stats=wp_stats,
+        match_end_tick=p.rounds.attrs.get("match_end_tick"), visibility_backend=p.visibility_backend,
+        parse_warnings=list(p.warnings),
     )

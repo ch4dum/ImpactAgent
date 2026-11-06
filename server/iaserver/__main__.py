@@ -1,4 +1,4 @@
-"""CLI: python -m iaserver bundle DEMO [--out DIR]"""
+"""CLI: python -m iaserver bundle DEMO [--out DIR] | recompute BUNDLE... [--all DIR]"""
 
 from __future__ import annotations
 
@@ -34,6 +34,22 @@ def _cmd_bundle(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_recompute(args: argparse.Namespace) -> int:
+    from iaserver.pipeline.bundle import recompute
+
+    dirs = list(args.bundles)
+    if args.all:
+        dirs += sorted(d for d in Path(args.all).iterdir() if (d / "manifest.json").is_file())
+    if not dirs:
+        print("no bundle given")
+        return 1
+    for d in dirs:
+        m = recompute(d)
+        print(f"{Path(d).name}: pipeline_version={m['pipeline_version']} "
+              f"(history: {len(m['derived_history'])}) timings_s={m['recompute_timings_s']}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -48,6 +64,10 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--timeout", type=float, default=PARSE_TIMEOUT_SECONDS,
                    help=f"parse timeout in s (default {PARSE_TIMEOUT_SECONDS}; 0 = none, parse in-process)")
     b.set_defaults(func=_cmd_bundle)
+    r = sub.add_parser("recompute", help="bundle events/ + snapshot/ -> new derived/ (no demo needed)")
+    r.add_argument("bundles", nargs="*", type=Path)
+    r.add_argument("--all", metavar="DIR", help="every bundle folder in DIR (e.g. data/bundles)")
+    r.set_defaults(func=_cmd_recompute)
     args = ap.parse_args(argv)
     return args.func(args)
 

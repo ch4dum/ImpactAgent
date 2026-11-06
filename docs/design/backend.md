@@ -144,7 +144,7 @@ redactions(steam_id text PK, requested_by uuid → profiles, scope text, created
 ```
 incoming/{job_id}/upload.{dem|dem.bz2|dem.gz|dem.zst}   lifecycle: ลบหลัง 2 วัน (กันไฟล์ค้าง)
 failed/{job_id}/upload.<ext> + error.json                lifecycle: ลบหลัง 7 วัน
-matches/{match_id}/
+matches/{dem_sha256}/
   manifest.json                         version ทุกชั้น + ไฟล์ + rows + sha256 ของแต่ละไฟล์
   events/p{N}/{table}.parquet           ชั้น parse (สร้างใหม่ได้เฉพาะเมื่อมี demo)
   snapshot/p{N}/state_ticks.parquet     §6
@@ -163,6 +163,7 @@ matches/{match_id}/
   - `replay` version `r{N}` แยก เพราะ format replay เปลี่ยนไม่ขึ้นกับ metric
 - **Derived เขียน prefix ใหม่ทุก version** ไม่ทับของเดิม; `matches.pipeline_version` เปลี่ยนเมื่อ recompute สำเร็จเท่านั้น → rollback ได้ · prefix เก่าลบด้วยมือ (admin) เมื่อแน่ใจ
 - ใช้ path ต่อแมตช์ (ไม่ใช่ hive partition ต่อตาราง): หน้าเว็บอ่านทีละแมตช์; query ข้ามแมตช์ได้รายการ path จาก PG แล้วให้ DuckDB อ่าน
+- **Key ถาวรนอก Postgres = `dem_sha256`** (owner 2026-11-06): path ใน R2 (`matches/{dem_sha256}/`) และคอลัมน์ `match_id` ใน Parquet ทุกตาราง (wp_states, rating_events, player_round_ratings, metric_values) = `p.sha256` = `matches.dem_sha256` · uuid (`matches.match_id`) ใช้เฉพาะ PG + URL · join Parquet ↔ PG ผ่าน `dem_sha256` · เหตุผล: worker เขียน bundle ได้ก่อนมีแถวใน PG, DB หายก็ re-ingest ได้ไฟล์เดิม, demo เดียวกัน = key เดียวกัน, ไม่ต้อง rename คอลัมน์ใน impactagent
 - CORS ของ bucket: อนุญาต `PUT` จาก origin ของ frontend เท่านั้น · token R2 ของ worker / API scope แค่ bucket นี้
 
 ---
@@ -253,7 +254,14 @@ cancel ได้ตอน awaiting_upload / queued (ทุก request ของ 
 - `defuse_starts`: begin/abort ของ `bomb_begindefuse` พร้อม `haskit`
 - `cvars.parquet`: `server_cvar` ทุกแถว (name, value, tick)
 - `header.json`: `parse_header()`, tickrate, client_build, map
-- ตรวจแล้ว: eq / timers / defuse_starts / wp_states / stats จาก snapshot = ของเดิม ทั้ง 5 แมตช์ (3.1); สร้างใหม่จาก bundle ที่อ่านกลับ = ช่วง 3.2
+- `header.json` (p2): `match_end_tick` (`rounds.attrs`), `visibility_backend`, `parse_warnings` นอกจาก header / tickrate / client_build / map → สร้าง `ParsedDemo` คืนได้ครบทุก field ยกเว้น `path` (ชี้ `<no demo>/…` เปิดไม่ได้)
+- ตรวจแล้ว: eq / timers / defuse_starts / wp_states / stats จาก snapshot = ของเดิม ทั้ง 5 แมตช์ (3.1) และ recompute จาก bundle ที่อ่านกลับ = derived จาก demo (3.2, §6.5)
+
+### 6.5 Recompute (ทำแล้วใน 3.2)
+`python -m iaserver recompute BUNDLE… | --all data/bundles` → `bundle.recompute(dir)`: `load_inputs` (events/ + snapshot/ → `ParsedDemo` + `StateSnapshot`) → `run.derive` (ตัวเดียวกับ `run_match`) → เขียน `derived/<pipeline_version ใหม่>/` · prefix เดิมไม่ถูกลบ (manifest `derived_history`) · invariant พัง = `InvariantError` และ manifest ไม่เปลี่ยน · `pipeline_version` ใช้ `parse_version` ของ bundle (ไม่ใช่ของโค้ด)
+- ผล 2026-11-06 (5 แมตช์, ทุกทางเปิด demo ถูกบล็อก): derived 35/35 ไฟล์ `equals` bundle ที่สร้างจาก demo และไบต์ของ Parquet ตรงกัน · 0.6–1.1 s/แมตช์ (load 0.1 s)
+- ทดสอบ `credit.yaml` `time_credit: none` ชั่วคราว: `pipeline_version` เปลี่ยนเฉพาะส่วน `c…`, wp_states / แถวที่ไม่ใช่ `time` / metric อื่นไม่เปลี่ยน, แถว `time` เป็น steam_id null ทุกแถว (ผลรวมต่อรอบ/ฝั่งเท่าเดิม), invariant OK, `impact` เปลี่ยนทุกคน, rating_events = `build_rating_events(p จาก demo, cfg none)` · คืนค่าแล้ว sha เดิม
+- Round-trip (เขียน → อ่าน) ทุกตารางใน bundle: `impactagent/parse/io.py` `parquet_ready` เก็บคอลัมน์ object ที่เป็น bool + None เป็น nullable bool (p1 แปลงเป็น string → `"False"` อ่านกลับเป็น True: เจอใน state_ticks ของ mirage-65db, ทำให้ `ct_has_kit` ผิด 59 แถว) และ `read_table` คืน list (inventory) เป็น Python list · ที่ยังต่าง: object ที่เป็น str ล้วน (`shots.weapon_class`, `player_round_ratings.steam_id`) อ่านกลับเป็น string dtype ค่าเท่ากัน
 
 ### 6.3 Replay 8 Hz (ช่วง 3.1b)
 - ทุก 8 tick (64-tick) ระหว่าง freeze_end − 5 s ถึง round_end + 5 s · ต่อผู้เล่น: x, y, z (quantize int16 ตาม scale ใน `meta.json`), yaw (int16), pitch (int8), hp, armor, active_weapon (id), alive, flags (ducking, scoped, defusing, blind) · + เส้นทางระเบิด (entity, tick, xyz) · 1 ไฟล์ต่อรอบ, zstd
@@ -336,7 +344,7 @@ impactagent/              เดิม: parse / metrics / ratings / validate (�
 server/iaserver/          package `iaserver` (pyproject เดิม: packages.find where = [".", "server"]; extras [api] [worker] ทีหลัง)
   __main__.py             python -m iaserver bundle DEMO [--out DIR]  (default data/bundles/<stem>, gitignored)
   pipeline/  run.py       run_match(dem_path) -> MatchBundle (pure, ไม่ยุ่ง cloud), InvariantError
-             bundle.py    write_bundle / read_bundle (Parquet + manifest); recompute(bundle) -> derived (3.2)
+             bundle.py    write_bundle / read_bundle / load_inputs / recompute (3.2, §6.5)
              versions.py  PARSE_VERSION + hash ของ registry / credit / wp_model → pipeline_version
              rows.py      (3.3) bundle → แถว PG (match_players.metrics jsonb ฯลฯ)
              replay.py    (3.1b) track 8 Hz
@@ -357,6 +365,9 @@ Refactor ใน `impactagent/` (ทำแล้วใน 3.1, ไม่เปล
 2. `impactagent/metrics/compute.py`: `match_tables(p, events=None)` → {metrics, player_rounds, clutches}; `compute_match_metrics(p, events=None)` = `match_tables(...)["metrics"]` (ส่ง events แล้วไม่ต้องเปิด demo ซ้ำ)
 3. `impactagent/ratings/wp_states.py`: `StateSnapshot`, `read_state_snapshots`, `state_ticks_of`, `_timers_from_cvars`, `_equip_from_snapshot`; `build_wp_states(p, snapshot=None)`; `_read_timers_and_equip` เหลือเป็น wrapper (§6.2)
 4. `impactagent/parse/demo.py`: ชื่อ public `demo_file` (= `_demo_file`)
+
+5. (3.2) `impactagent/parse/io.py`: `parquet_ready` ไม่แปลงคอลัมน์ bool + None เป็น string, `read_table` (read_parquet + list กลับเป็น Python list) · events ของ 5 แมตช์ยัง = golden
+6. (3.2) `server/iaserver/pipeline/run.py`: `derive(p, snap)` ใช้ร่วมกันทั้ง `run_match` และ `recompute`
 
 Parquet ไม่มี dtype `object`: คอลัมน์ string ที่อยู่ในหน่วยความจำเป็น `object` (เช่น `player_round_ratings.steam_id`) อ่านกลับมาเป็น `str` (ค่าเท่ากัน, เหมือนไฟล์ที่ CLI `impact` เขียนอยู่แล้ว)
 
@@ -384,7 +395,7 @@ Parquet ไม่มี dtype `object`: คอลัมน์ string ที่�
 | 3.0 | doc นี้ + data-model §2.5 / §7 + roadmap | owner approve |
 | 3.1 ✅ | `pipeline.run_match` + bundle ลงโฟลเดอร์ local + refactor (§10) + `state_ticks` | **ผ่าน (2026-11-06):** golden จาก HEAD ก่อนแก้ (event Parquet ใน `data/parsed` เป็นของเก่าก่อน parser เปลี่ยน ใช้เทียบได้แค่ rating_events / player_round_ratings) · R1 15/15, R2 25/25, R3 35/35, bundle 65/65 · rating_events / player_round_ratings = `data/parsed` · `validate-all` log เหมือนเดิม · เวลา / RAM / ขนาด §6.4 |
 | 3.1b | replay 8 Hz ใน bundle | ขนาด/เวลาเพิ่มวัดได้ · ตำแหน่ง ณ kill tick ใกล้ `kills.attacker_xyz` (± 1 frame) |
-| 3.2 | `recompute(bundle)` ไม่มี demo | ซ่อน demo แล้ว recompute → rating_events / metrics `equals` รอบที่มี demo ทุกแมตช์ |
+| 3.2 ✅ | `recompute(bundle)` ไม่มี demo | **ผ่าน (2026-11-06):** bundle p2 80/80 = golden · recompute (demo ถูกบล็อก) derived 35/35 `equals` + ไบต์ตรง · `time_credit: none` ได้ผลต่างตามคาด (§6.5) · `validate-all` log เหมือนเดิม |
 | 3.1c | metric function คืน numerator / denominator (ทำหลัง 3.2 ก่อน 3.3; ตอนนี้ `metric_values.parquet` มี num/den = null) | golden + `validate-all` ไม่เปลี่ยน · metric `ratio` ทุกตัวใน registry มี num/den และ value = num/den |
 | 3.3 | migrations + loader (bundle → PG local) | scoreboard จาก SQL ตรงกับ `compute_match_metrics` / CLI `impact` |
 | 3.4 | R2: เขียน/อ่าน bundle + manifest + lifecycle `incoming/` `failed/` | DuckDB อ่าน rating_events จาก R2 ได้ · sha ใน manifest ตรง |

@@ -12,7 +12,7 @@
 2. **Engagement เป็นหน่วยกลาง:** "การดวล" (ช่วงที่ A เห็น B จนถึง damage/kill/หายไป) เป็นฐานของ Aim (TTD, crosshair placement), Head to Head และ Map Zones
 3. **Metric เก็บเป็น numerator/denominator:** ห้ามเฉลี่ย % ข้ามแมตช์ตรงๆ (เฉลี่ยของ % ≠ % รวม) ต้องรวม numerator และ denominator ก่อนแล้วค่อยหาร
 4. **Metric ที่เป็น median** (TTD, crosshair placement) รวมข้ามแมตช์ด้วยการหารไม่ได้ → คำนวณจากตาราง `engagements` ตรงๆ
-5. **ทุกตารางมี `match_id` และ `round_no`** เพื่อ filter ตาม side/economy/phase ได้ทุกหน้า
+5. **ทุกตารางมี `match_id` และ `round_no`** เพื่อ filter ตาม side/economy/phase ได้ทุกหน้า · ใน Postgres `match_id` = uuid; ใน Parquet `match_id` = **`dem_sha256`** (key ถาวรนอก PG, R2 `matches/{dem_sha256}/`, backend.md §3)
 6. **ผู้เล่นใช้ `steam_id` (Steam64)** เป็น key ส่วนชื่อเปลี่ยนได้ เก็บชื่อที่ใช้ในแมตช์นั้นไว้แยก
 
 **Storage:** ตาราง summary (matches, match_players + metric jsonb, rounds, player_rounds) อยู่ใน **Postgres** (Supabase) ส่วน event ทุกชนิด (รวม kills, shots, damages, engagements, rating_events …) อยู่ใน **Parquet ต่อแมตช์** บน R2 แล้ว query ด้วย DuckDB ตอนต้องการ (ถูกและเร็วกว่าเอา shot เป็นแสนแถวต่อแมตช์ไปใส่ Postgres) · ตารางไหนอยู่ที่ไหน + layout ใน R2: [`backend.md`](backend.md) §2.2, §3
