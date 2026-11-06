@@ -21,9 +21,13 @@ def parsed_tables(p) -> dict[str, pd.DataFrame]:
     return tables
 
 
-def _value_kinds(s: pd.Series) -> set[str]:
-    """Python types of the non-null values of an object column."""
-    return {type(v).__name__ for v in s if v is not None and not (isinstance(v, float) and v != v)}
+def _is_null(v) -> bool:
+    return v is None or (isinstance(v, float) and v != v)
+
+
+def _bool_or_null(s: pd.Series) -> bool:
+    """True if every non-null value of an object column is a bool (Python bool or np.bool_)."""
+    return all(_is_null(v) or isinstance(v, (bool, np.bool_)) for v in s)
 
 
 def parquet_ready(df: pd.DataFrame) -> pd.DataFrame:
@@ -40,7 +44,7 @@ def parquet_ready(df: pd.DataFrame) -> pd.DataFrame:
             continue
         if df[c].map(lambda v: isinstance(v, (list, type(None)))).all():
             continue
-        if _value_kinds(df[c]) <= {"bool"}:
+        if _bool_or_null(df[c]):
             continue
         df[c] = df[c].astype("string")
     return df
